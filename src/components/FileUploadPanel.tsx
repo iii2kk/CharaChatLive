@@ -16,6 +16,8 @@ export interface ModelEntry {
   files: ModelFile[];
 }
 
+type NumericViewerSettingKey = Exclude<keyof ViewerSettings, "physicsEnabled">;
+
 interface FileUploadPanelProps {
   presetModels: ModelEntry[];
   onPresetSelected: (file: ModelFile) => void;
@@ -114,11 +116,12 @@ export default function FileUploadPanel({
   );
 
   const viewerControls: Array<{
-    key: keyof ViewerSettings;
+    key: NumericViewerSettingKey;
     label: string;
     min: number;
     max: number;
     step: number;
+    disabled?: boolean;
   }> = [
     {
       key: "ambientLightIntensity",
@@ -175,6 +178,30 @@ export default function FileUploadPanel({
       min: 0,
       max: 2.0,
       step: 0.05,
+    },
+    {
+      key: "gravityX",
+      label: "Gravity X",
+      min: -100,
+      max: 100,
+      step: 1,
+      disabled: !viewerSettings.physicsEnabled,
+    },
+    {
+      key: "gravityY",
+      label: "Gravity Y",
+      min: -200,
+      max: 50,
+      step: 1,
+      disabled: !viewerSettings.physicsEnabled,
+    },
+    {
+      key: "gravityZ",
+      label: "Gravity Z",
+      min: -100,
+      max: 100,
+      step: 1,
+      disabled: !viewerSettings.physicsEnabled,
     },
   ];
 
@@ -349,6 +376,20 @@ export default function FileUploadPanel({
           </button>
         </div>
         <div className="flex flex-col gap-3">
+          <label className="flex items-center justify-between rounded bg-gray-800/50 px-3 py-2 text-sm">
+            <span className="text-gray-300">Physics</span>
+            <input
+              type="checkbox"
+              checked={viewerSettings.physicsEnabled}
+              onChange={(e) =>
+                onViewerSettingsChange((prev) => ({
+                  ...prev,
+                  physicsEnabled: e.currentTarget.checked,
+                }))
+              }
+              className="h-4 w-4 accent-blue-400"
+            />
+          </label>
           {viewerControls.map((control) => (
             <label key={control.key} className="flex flex-col gap-1">
               <div className="flex items-center justify-between text-xs">
@@ -363,13 +404,14 @@ export default function FileUploadPanel({
                 max={control.max}
                 step={control.step}
                 value={viewerSettings[control.key]}
+                disabled={control.disabled}
                 onChange={(e) =>
                   handleViewerSettingChange(
                     control.key,
                     Number(e.currentTarget.value)
                   )
                 }
-                className="accent-blue-400"
+                className="accent-blue-400 disabled:opacity-40"
               />
             </label>
           ))}

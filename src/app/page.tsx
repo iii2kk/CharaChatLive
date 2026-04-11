@@ -23,6 +23,8 @@ const MMDViewer = dynamic(() => import("@/components/MMDViewer"), {
 });
 
 export default function Home() {
+  const [viewerSettings, setViewerSettings] =
+    useState<ViewerSettings>(defaultViewerSettings);
   const {
     mesh,
     helper,
@@ -31,13 +33,11 @@ export default function Home() {
     loadModel,
     loadModelFromPath,
     loadAnimation,
-  } = useMMDLoader();
+  } = useMMDLoader(viewerSettings);
   const [modelName, setModelName] = useState<string | null>(null);
   const [animationLoaded, setAnimationLoaded] = useState(false);
   const [fileMapState, setFileMapState] = useState<FileMap | null>(null);
   const [presetModels, setPresetModels] = useState<ModelEntry[]>([]);
-  const [viewerSettings, setViewerSettings] =
-    useState<ViewerSettings>(defaultViewerSettings);
 
   useEffect(() => {
     fetch("/api/models")
