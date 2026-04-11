@@ -381,12 +381,13 @@ export default function FileUploadPanel({
             <input
               type="checkbox"
               checked={viewerSettings.physicsEnabled}
-              onChange={(e) =>
+              onChange={(e) => {
+                const { checked } = e.currentTarget;
                 onViewerSettingsChange((prev) => ({
                   ...prev,
-                  physicsEnabled: e.currentTarget.checked,
-                }))
-              }
+                  physicsEnabled: checked,
+                }));
+              }}
               className="h-4 w-4 accent-blue-400"
             />
           </label>
