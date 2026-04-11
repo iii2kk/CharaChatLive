@@ -4,26 +4,20 @@ import { OrbitControls, Grid } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import type { AnimationMixer, Object3D } from "three";
-import type { MMDAnimationHelper } from "three/examples/jsm/animation/MMDAnimationHelper";
-import type { VRM } from "@pixiv/three-vrm";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { ViewerSettings } from "@/lib/viewer-settings";
+import type { LoadedModel } from "@/hooks/useModelLoader";
 import MMDModel from "./MMDModel";
 
 interface MMDSceneProps {
-  object: Object3D | null;
-  helper: MMDAnimationHelper | null;
-  animationMixer: AnimationMixer | null;
-  vrm: VRM | null;
+  models: LoadedModel[];
+  activeModel: LoadedModel | null;
   viewerSettings: ViewerSettings;
 }
 
 export default function MMDScene({
-  object,
-  helper,
-  animationMixer,
-  vrm,
+  models,
+  activeModel,
   viewerSettings,
 }: MMDSceneProps) {
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 10, 0), []);
@@ -41,13 +35,13 @@ export default function MMDScene({
   }, [directionalLightTarget]);
 
   useEffect(() => {
-    if (!object || !vrm || !(camera instanceof THREE.PerspectiveCamera)) {
+    if (!activeModel || !(camera instanceof THREE.PerspectiveCamera)) {
       return;
     }
 
-    object.updateMatrixWorld(true);
+    activeModel.object.updateMatrixWorld(true);
 
-    const box = new THREE.Box3().setFromObject(object);
+    const box = new THREE.Box3().setFromObject(activeModel.object);
     if (box.isEmpty()) {
       return;
     }
@@ -89,7 +83,7 @@ export default function MMDScene({
     controlsRef.current?.target.copy(nextTarget);
     controlsRef.current?.update();
     invalidate();
-  }, [camera, defaultTarget, invalidate, object, vrm]);
+  }, [activeModel, camera, defaultTarget, invalidate]);
 
   return (
     <>
@@ -124,12 +118,7 @@ export default function MMDScene({
         infiniteGrid
       />
 
-      <MMDModel
-        object={object}
-        helper={helper}
-        animationMixer={animationMixer}
-        vrm={vrm}
-      />
+      <MMDModel models={models} />
 
       <OrbitControls
         ref={controlsRef}

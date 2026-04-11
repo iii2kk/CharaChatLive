@@ -1,30 +1,26 @@
 "use client";
 
 import { useFrame } from "@react-three/fiber";
-import type { AnimationMixer, Object3D } from "three";
-import type { MMDAnimationHelper } from "three/examples/jsm/animation/MMDAnimationHelper";
-import type { VRM } from "@pixiv/three-vrm";
+import type { LoadedModel } from "@/hooks/useModelLoader";
 
 interface MMDModelProps {
-  object: Object3D | null;
-  helper: MMDAnimationHelper | null;
-  animationMixer: AnimationMixer | null;
-  vrm: VRM | null;
+  models: LoadedModel[];
 }
 
-export default function MMDModel({
-  object,
-  helper,
-  animationMixer,
-  vrm,
-}: MMDModelProps) {
+export default function MMDModel({ models }: MMDModelProps) {
   useFrame((_, delta) => {
-    helper?.update(delta);
-    animationMixer?.update(delta);
-    vrm?.update(delta);
+    for (const model of models) {
+      model.helper?.update(delta);
+      model.animationMixer?.update(delta);
+      model.vrm?.update(delta);
+    }
   });
 
-  if (!object) return null;
-
-  return <primitive object={object} />;
+  return (
+    <>
+      {models.map((model) => (
+        <primitive key={model.id} object={model.object} />
+      ))}
+    </>
+  );
 }

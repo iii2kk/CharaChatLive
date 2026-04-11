@@ -6,6 +6,7 @@ import {
   type ViewerSettings,
 } from "@/lib/viewer-settings";
 import type { ModelKind } from "@/lib/file-map";
+import type { LoadedModel } from "@/hooks/useModelLoader";
 
 export interface ModelFile {
   name: string;
@@ -24,6 +25,10 @@ interface FileUploadPanelProps {
   onPresetSelected: (file: ModelFile) => void;
   onModelFolderSelected: (files: FileList) => void;
   onAnimationFilesSelected: (files: FileList) => void;
+  loadedModels: LoadedModel[];
+  activeModelId: string | null;
+  onActiveModelChange: (modelId: string) => void;
+  onRemoveModel: (modelId: string) => void;
   loading: boolean;
   error: string | null;
   modelName: string | null;
@@ -38,6 +43,10 @@ export default function FileUploadPanel({
   onPresetSelected,
   onModelFolderSelected,
   onAnimationFilesSelected,
+  loadedModels,
+  activeModelId,
+  onActiveModelChange,
+  onRemoveModel,
   loading,
   error,
   modelName,
@@ -268,6 +277,58 @@ export default function FileUploadPanel({
         <p className="text-sm text-gray-400 mb-2">ファイルから読み込み</p>
       </div>
 
+      {loadedModels.length > 0 && (
+        <div className="border-t border-gray-700 pt-4">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-sm text-gray-400">読み込み済みモデル</p>
+            <span className="text-xs text-gray-500">{loadedModels.length}</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {loadedModels.map((loadedModel) => {
+              const isActive = loadedModel.id === activeModelId;
+
+              return (
+                <div
+                  key={loadedModel.id}
+                  className={`rounded border px-3 py-2 transition-colors ${
+                    isActive
+                      ? "border-blue-500 bg-blue-950/40"
+                      : "border-gray-700 bg-gray-800/40"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onActiveModelChange(loadedModel.id)}
+                    className="w-full text-left"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm text-gray-100">
+                        {loadedModel.name}
+                      </span>
+                      <span className="ml-auto text-[10px] uppercase text-gray-400">
+                        {loadedModel.kind}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {loadedModel.animationLoaded
+                        ? "アニメーションあり"
+                        : "アニメーションなし"}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveModel(loadedModel.id)}
+                    className="mt-2 text-xs text-red-300 hover:text-red-200"
+                  >
+                    削除
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Model Folder Upload */}
       <div
         className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400 hover:bg-gray-800 transition-colors"
@@ -360,6 +421,12 @@ export default function FileUploadPanel({
             <span className="text-gray-400">アニメーション: </span>
             <span className="text-green-400">再生中</span>
           </div>
+        )}
+
+        {modelName && (
+          <p className="text-xs text-gray-500">
+            アニメーションは現在選択中のモデルに適用されます
+          </p>
         )}
 
         {!modelName && !loading && (

@@ -16,7 +16,6 @@ import {
   getAnimationKind,
   revokeFileMap,
   type AnimationKind,
-  type FileMap,
 } from "@/lib/file-map";
 
 const MMDViewer = dynamic(() => import("@/components/MMDViewer"), {
@@ -27,18 +26,17 @@ export default function Home() {
   const [viewerSettings, setViewerSettings] =
     useState<ViewerSettings>(defaultViewerSettings);
   const {
-    model,
-    helper,
-    animationMixer,
+    models,
+    activeModel,
+    activeModelId,
+    setActiveModelId,
+    removeModel,
     loading,
     error,
     loadModel,
     loadModelFromPath,
     loadAnimation,
   } = useModelLoader(viewerSettings);
-  const [modelName, setModelName] = useState<string | null>(null);
-  const [animationLoaded, setAnimationLoaded] = useState(false);
-  const [fileMapState, setFileMapState] = useState<FileMap | null>(null);
   const [animationUrlState, setAnimationUrlState] = useState<string[]>([]);
   const [presetModels, setPresetModels] = useState<ModelEntry[]>([]);
 
@@ -58,58 +56,44 @@ export default function Home() {
 
   useEffect(() => {
     return () => {
-      if (fileMapState) {
-        revokeFileMap(fileMapState);
-      }
       animationUrlState.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [animationUrlState, fileMapState]);
+  }, [animationUrlState]);
 
   const handlePresetSelected = useCallback(
     (file: ModelFile) => {
-      if (fileMapState) {
-        revokeFileMap(fileMapState);
-        setFileMapState(null);
-      }
       clearAnimationUrls();
-      setModelName(file.name);
-      setAnimationLoaded(false);
-      loadModelFromPath(file.path);
+      loadModelFromPath(file.path, { name: file.name });
     },
-    [clearAnimationUrls, fileMapState, loadModelFromPath]
+    [clearAnimationUrls, loadModelFromPath]
   );
 
   const handleModelFolderSelected = useCallback(
     (files: FileList) => {
-      if (fileMapState) {
-        revokeFileMap(fileMapState);
-      }
       clearAnimationUrls();
 
       const fileMap = buildFileMap(files);
-      setFileMapState(fileMap);
-
       const modelEntry = findModelFileEntry(fileMap);
 
       if (!modelEntry) {
+        revokeFileMap(fileMap);
         return;
       }
-
-      setModelName(modelEntry.name);
-      setAnimationLoaded(false);
 
       const animationKind: AnimationKind =
         modelEntry.kind === "vrm" ? "vrma" : "vmd";
       const animationUrls = findAnimationFiles(fileMap, animationKind);
 
-      loadModel(modelEntry.kind, modelEntry.url, fileMap, () => {
+      loadModel(modelEntry.kind, modelEntry.url, fileMap, {
+        name: modelEntry.name,
+        onLoaded: (modelId) => {
         if (animationUrls.length > 0) {
-          loadAnimation(animationKind, animationUrls);
-          setAnimationLoaded(true);
+          loadAnimation(animationKind, animationUrls, modelId);
         }
+        },
       });
     },
-    [clearAnimationUrls, fileMapState, loadAnimation, loadModel]
+    [clearAnimationUrls, loadAnimation, loadModel]
   );
 
   const handleAnimationFilesSelected = useCallback(
@@ -136,7 +120,6 @@ export default function Home() {
       if (urls.length > 0) {
         setAnimationUrlState(urls);
         loadAnimation(animationKind, urls);
-        setAnimationLoaded(true);
       }
     },
     [clearAnimationUrls, loadAnimation]
@@ -149,20 +132,22 @@ export default function Home() {
         onPresetSelected={handlePresetSelected}
         onModelFolderSelected={handleModelFolderSelected}
         onAnimationFilesSelected={handleAnimationFilesSelected}
+        loadedModels={models}
+        activeModelId={activeModelId}
+        onActiveModelChange={setActiveModelId}
+        onRemoveModel={removeModel}
         loading={loading}
         error={error}
-        modelName={modelName}
-        modelKind={model?.kind ?? null}
-        animationLoaded={animationLoaded}
+        modelName={activeModel?.name ?? null}
+        modelKind={activeModel?.kind ?? null}
+        animationLoaded={activeModel?.animationLoaded ?? false}
         viewerSettings={viewerSettings}
         onViewerSettingsChange={setViewerSettings}
       />
       <div className="flex-1 h-full">
         <MMDViewer
-          object={model?.object ?? null}
-          helper={helper}
-          animationMixer={animationMixer}
-          vrm={model?.vrm ?? null}
+          models={models}
+          activeModel={activeModel}
           viewerSettings={viewerSettings}
         />
       </div>

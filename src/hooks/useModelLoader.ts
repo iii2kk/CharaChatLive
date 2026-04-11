@@ -27,11 +27,26 @@ interface VRMGLTF extends GLTF {
 }
 
 export interface LoadedModel {
+  id: string;
+  name: string;
   kind: ModelKind;
   object: THREE.Object3D;
   mmdMesh?: THREE.SkinnedMesh;
   vrm?: VRM;
+  helper: MMDAnimationHelper | null;
+  animationMixer: THREE.AnimationMixer | null;
+  animationLoaded: boolean;
 }
+
+interface LoadModelOptions {
+  name?: string;
+  onLoaded?: (modelId: string) => void;
+}
+
+type ModelRuntime = {
+  fileMap: FileMap | null;
+  animationClip: THREE.AnimationClip | null;
+};
 
 function createURLModifier(fileMap: FileMap) {
   return (url: string): string => {
@@ -88,6 +103,12 @@ function createURLModifier(fileMap: FileMap) {
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "不明なエラー";
+}
+
+function getNameFromPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  const parts = normalized.split("/");
+  return parts[parts.length - 1] || path;
 }
 
 function disposeMaterial(material: THREE.Material) {
@@ -154,23 +175,18 @@ function createVRMAnimationLoader(manager?: THREE.LoadingManager) {
   return loader;
 }
 
+function generateModelId() {
+  return `model-${crypto.randomUUID()}`;
+}
+
 export function useModelLoader(viewerSettings: ViewerSettings) {
-  const [model, setModel] = useState<LoadedModel | null>(null);
-  const [helper, setHelper] = useState<MMDAnimationHelper | null>(null);
-  const [animationMixer, setAnimationMixer] = useState<THREE.AnimationMixer | null>(
-    null
-  );
+  const [models, setModels] = useState<LoadedModel[]>([]);
+  const [activeModelId, setActiveModelId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [animationClip, setAnimationClip] = useState<THREE.AnimationClip | null>(
-    null
-  );
 
-  const modelRef = useRef<LoadedModel | null>(null);
-  const helperRef = useRef<MMDAnimationHelper | null>(null);
-  const animationMixerRef = useRef<THREE.AnimationMixer | null>(null);
-  const fileMapRef = useRef<FileMap | null>(null);
-  const animationClipRef = useRef<THREE.AnimationClip | null>(null);
+  const modelsRef = useRef<LoadedModel[]>([]);
+  const runtimesRef = useRef<Map<string, ModelRuntime>>(new Map());
   const configureRequestRef = useRef(0);
   const physicsSettingsRef = useRef({
     physicsEnabled: viewerSettings.physicsEnabled,
@@ -179,180 +195,221 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
     gravityZ: viewerSettings.gravityZ,
   });
 
-  const clearHelper = useCallback((targetMesh?: THREE.SkinnedMesh | null) => {
-    const meshToRemove = targetMesh ?? modelRef.current?.mmdMesh ?? null;
-
-    if (meshToRemove && helperRef.current) {
-      try {
-        helperRef.current.remove(meshToRemove);
-      } catch {
-        // ignore
-      }
-    }
-
-    helperRef.current = null;
-    setHelper(null);
+  const syncModels = useCallback((updater: (prev: LoadedModel[]) => LoadedModel[]) => {
+    setModels((prev) => {
+      const next = updater(prev);
+      modelsRef.current = next;
+      return next;
+    });
   }, []);
 
-  const clearAnimationMixer = useCallback(() => {
-    const currentMixer = animationMixerRef.current;
-    const currentObject = modelRef.current?.object;
-
-    if (currentMixer && currentObject) {
-      currentMixer.stopAllAction();
-      currentMixer.uncacheRoot(currentObject);
-    }
-
-    animationMixerRef.current = null;
-    setAnimationMixer(null);
+  const getModelById = useCallback((modelId: string | null) => {
+    if (!modelId) return null;
+    return modelsRef.current.find((model) => model.id === modelId) ?? null;
   }, []);
 
-  const rebuildHelper = useCallback(
-    async (targetMesh: THREE.SkinnedMesh, clip: THREE.AnimationClip | null) => {
-      const requestId = ++configureRequestRef.current;
-      const { physicsEnabled, gravityX, gravityY, gravityZ } =
-        physicsSettingsRef.current;
-
-      clearHelper(targetMesh);
-
-      if (!clip && !physicsEnabled) {
-        return;
-      }
-
-      if (physicsEnabled) {
-        await ensureAmmo();
-      }
-
-      if (
-        configureRequestRef.current !== requestId ||
-        modelRef.current?.mmdMesh !== targetMesh
-      ) {
-        return;
-      }
-
-      const nextHelper = new MMDAnimationHelper({
-        afterglow: 2.0,
-        resetPhysicsOnLoop: true,
-      });
-
-      nextHelper.add(targetMesh, {
-        animation: clip ?? undefined,
-        physics: physicsEnabled,
-        gravity: new THREE.Vector3(gravityX, gravityY, gravityZ),
-      });
-
-      if (!physicsEnabled) {
-        nextHelper.enable("physics", false);
-      }
-
-      helperRef.current = nextHelper;
-      setHelper(nextHelper);
+  const updateModel = useCallback(
+    (modelId: string, updater: (model: LoadedModel) => LoadedModel) => {
+      syncModels((prev) =>
+        prev.map((model) => (model.id === modelId ? updater(model) : model))
+      );
     },
-    [clearHelper]
+    [syncModels]
   );
 
-  const cleanup = useCallback(() => {
-    configureRequestRef.current += 1;
+  const clearHelper = useCallback(
+    (modelId: string) => {
+      const model = getModelById(modelId);
+      const meshToRemove = model?.mmdMesh ?? null;
 
-    clearHelper();
-    clearAnimationMixer();
+      if (meshToRemove && model?.helper) {
+        try {
+          model.helper.remove(meshToRemove);
+        } catch {
+          // ignore
+        }
+      }
 
-    const currentModel = modelRef.current;
-    if (currentModel) {
-      if (currentModel.kind === "vrm") {
-        VRMUtils.deepDispose(currentModel.object);
+      updateModel(modelId, (current) => ({
+        ...current,
+        helper: null,
+      }));
+    },
+    [getModelById, updateModel]
+  );
+
+  const clearAnimationMixer = useCallback(
+    (modelId: string) => {
+      const model = getModelById(modelId);
+      if (model?.animationMixer) {
+        model.animationMixer.stopAllAction();
+        model.animationMixer.uncacheRoot(model.object);
+      }
+
+      updateModel(modelId, (current) => ({
+        ...current,
+        animationMixer: null,
+      }));
+    },
+    [getModelById, updateModel]
+  );
+
+  const revokeRuntime = useCallback((modelId: string) => {
+    const runtime = runtimesRef.current.get(modelId);
+    if (!runtime) return;
+
+    if (runtime.fileMap) {
+      const revoked = new Set<string>();
+      for (const url of runtime.fileMap.values()) {
+        if (!revoked.has(url)) {
+          URL.revokeObjectURL(url);
+          revoked.add(url);
+        }
+      }
+      runtime.fileMap.clear();
+    }
+
+    runtimesRef.current.delete(modelId);
+  }, []);
+
+  const disposeModel = useCallback(
+    (modelId: string) => {
+      const model = getModelById(modelId);
+      if (!model) return;
+
+      if (model.kind === "vrm") {
+        VRMUtils.deepDispose(model.object);
       } else {
-        disposeObject3D(currentModel.object);
+        disposeObject3D(model.object);
       }
 
-      modelRef.current = null;
-      setModel(null);
-    }
-
-    animationClipRef.current = null;
-    setAnimationClip(null);
-  }, [clearAnimationMixer, clearHelper]);
-
-  const handleLoadedMmdModel = useCallback(
-    (loadedMesh: THREE.SkinnedMesh, onLoaded?: () => void) => {
-      loadedMesh.castShadow = true;
-      loadedMesh.receiveShadow = true;
-
-      const nextModel: LoadedModel = {
-        kind: "mmd",
-        object: loadedMesh,
-        mmdMesh: loadedMesh,
-      };
-
-      animationClipRef.current = null;
-      setAnimationClip(null);
-      modelRef.current = nextModel;
-      setModel(nextModel);
-      setLoading(false);
-      onLoaded?.();
+      revokeRuntime(modelId);
     },
-    []
+    [getModelById, revokeRuntime]
   );
 
-  const handleLoadedVRMModel = useCallback((gltf: VRMGLTF, onLoaded?: () => void) => {
-    const vrm = gltf.userData.vrm;
+  const removeModel = useCallback(
+    (modelId: string) => {
+      const remainingModels = modelsRef.current.filter(
+        (model) => model.id !== modelId
+      );
 
-    if (!vrm) {
-      throw new Error("VRM データを取得できませんでした");
+      configureRequestRef.current += 1;
+      clearHelper(modelId);
+      clearAnimationMixer(modelId);
+      disposeModel(modelId);
+
+      syncModels((prev) => prev.filter((model) => model.id !== modelId));
+
+      setActiveModelId((prev) =>
+        prev === modelId ? remainingModels.at(-1)?.id ?? null : prev
+      );
+    },
+    [clearAnimationMixer, clearHelper, disposeModel, syncModels]
+  );
+
+  const rebuildActiveMmdHelper = useCallback(async () => {
+    const activeModel = getModelById(activeModelId);
+    if (!activeModel?.mmdMesh || activeModel.kind !== "mmd") {
+      return;
     }
 
-    VRMUtils.rotateVRM0(vrm);
+    const requestId = ++configureRequestRef.current;
+    const { physicsEnabled, gravityX, gravityY, gravityZ } =
+      physicsSettingsRef.current;
+    const runtime = runtimesRef.current.get(activeModel.id);
+    const clip = runtime?.animationClip ?? null;
 
-    vrm.scene.traverse((child) => {
-      if (child instanceof THREE.Mesh || child instanceof THREE.SkinnedMesh) {
-        child.castShadow = true;
-        child.receiveShadow = true;
-      }
+    clearHelper(activeModel.id);
+
+    if (!clip && !physicsEnabled) {
+      return;
+    }
+
+    if (physicsEnabled) {
+      await ensureAmmo();
+    }
+
+    const latestModel = getModelById(activeModel.id);
+    if (
+      configureRequestRef.current !== requestId ||
+      latestModel?.mmdMesh !== activeModel.mmdMesh
+    ) {
+      return;
+    }
+
+    const nextHelper = new MMDAnimationHelper({
+      afterglow: 2.0,
+      resetPhysicsOnLoop: true,
     });
 
-    const nextModel: LoadedModel = {
-      kind: "vrm",
-      object: vrm.scene,
-      vrm,
-    };
+    nextHelper.add(activeModel.mmdMesh, {
+      animation: clip ?? undefined,
+      physics: physicsEnabled,
+      gravity: new THREE.Vector3(gravityX, gravityY, gravityZ),
+    });
 
-    animationClipRef.current = null;
-    setAnimationClip(null);
-    modelRef.current = nextModel;
-    setModel(nextModel);
-    setLoading(false);
-    onLoaded?.();
-  }, []);
+    if (!physicsEnabled) {
+      nextHelper.enable("physics", false);
+    }
+
+    updateModel(activeModel.id, (current) => ({
+      ...current,
+      helper: nextHelper,
+    }));
+  }, [activeModelId, clearHelper, getModelById, updateModel]);
 
   const loadMmdModel = useCallback(
     (
+      modelId: string,
       modelUrl: string,
       manager: THREE.LoadingManager | undefined,
-      onLoaded?: () => void
+      name: string,
+      onLoaded?: (modelId: string) => void
     ) => {
       const loader = new MMDLoader(manager);
 
       loader.load(
         modelUrl,
         (loadedMesh) => {
-          handleLoadedMmdModel(loadedMesh, onLoaded);
+          loadedMesh.castShadow = true;
+          loadedMesh.receiveShadow = true;
+
+          const nextModel: LoadedModel = {
+            id: modelId,
+            name,
+            kind: "mmd",
+            object: loadedMesh,
+            mmdMesh: loadedMesh,
+            helper: null,
+            animationMixer: null,
+            animationLoaded: false,
+          };
+
+          syncModels((prev) => [...prev, nextModel]);
+          setActiveModelId(modelId);
+          setLoading(false);
+          onLoaded?.(modelId);
         },
         undefined,
         (err) => {
           console.error("MMDLoader error:", err);
           setError(`モデルの読み込みに失敗しました: ${getErrorMessage(err)}`);
+          revokeRuntime(modelId);
           setLoading(false);
         }
       );
     },
-    [handleLoadedMmdModel]
+    [revokeRuntime, syncModels]
   );
 
   const loadVrmModel = useCallback(
     (
+      modelId: string,
       modelUrl: string,
       manager: THREE.LoadingManager | undefined,
-      onLoaded?: () => void
+      name: string,
+      onLoaded?: (modelId: string) => void
     ) => {
       const loader = createVRMLoader(manager);
 
@@ -360,26 +417,52 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         modelUrl,
         (gltf) => {
           try {
-            handleLoadedVRMModel(gltf as VRMGLTF, onLoaded);
+            const vrm = (gltf as VRMGLTF).userData.vrm;
+            if (!vrm) {
+              throw new Error("VRM データを取得できませんでした");
+            }
+
+            VRMUtils.rotateVRM0(vrm);
+
+            vrm.scene.traverse((child) => {
+              if (child instanceof THREE.Mesh || child instanceof THREE.SkinnedMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+              }
+            });
+
+            const nextModel: LoadedModel = {
+              id: modelId,
+              name,
+              kind: "vrm",
+              object: vrm.scene,
+              vrm,
+              helper: null,
+              animationMixer: null,
+              animationLoaded: false,
+            };
+
+            syncModels((prev) => [...prev, nextModel]);
+            setActiveModelId(modelId);
+            setLoading(false);
+            onLoaded?.(modelId);
           } catch (err) {
-          console.error("VRMLoader error:", err);
-          setError(
-            `モデルの読み込みに失敗しました: ${
-                getErrorMessage(err)
-              }`
-          );
-          setLoading(false);
+            console.error("VRMLoader error:", err);
+            setError(`モデルの読み込みに失敗しました: ${getErrorMessage(err)}`);
+            revokeRuntime(modelId);
+            setLoading(false);
           }
         },
         undefined,
         (err) => {
           console.error("VRMLoader error:", err);
           setError(`モデルの読み込みに失敗しました: ${getErrorMessage(err)}`);
+          revokeRuntime(modelId);
           setLoading(false);
         }
       );
     },
-    [handleLoadedVRMModel]
+    [revokeRuntime, syncModels]
   );
 
   const loadModel = useCallback(
@@ -387,29 +470,34 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
       kind: ModelKind,
       modelBlobUrl: string,
       fileMap: FileMap,
-      onLoaded?: () => void
+      options?: LoadModelOptions
     ) => {
+      const modelId = generateModelId();
+      const name = options?.name ?? getNameFromPath(modelBlobUrl);
+
       setLoading(true);
       setError(null);
-      cleanup();
 
-      fileMapRef.current = fileMap;
+      runtimesRef.current.set(modelId, {
+        fileMap,
+        animationClip: null,
+      });
 
       const manager = new THREE.LoadingManager();
       manager.setURLModifier(createURLModifier(fileMap));
 
       if (kind === "vrm") {
-        loadVrmModel(modelBlobUrl, manager, onLoaded);
+        loadVrmModel(modelId, modelBlobUrl, manager, name, options?.onLoaded);
         return;
       }
 
-      loadMmdModel(modelBlobUrl, manager, onLoaded);
+      loadMmdModel(modelId, modelBlobUrl, manager, name, options?.onLoaded);
     },
-    [cleanup, loadMmdModel, loadVrmModel]
+    [loadMmdModel, loadVrmModel]
   );
 
   const loadModelFromPath = useCallback(
-    (modelPath: string, onLoaded?: () => void) => {
+    (modelPath: string, options?: LoadModelOptions) => {
       const kind = getModelKind(modelPath);
 
       if (!kind) {
@@ -417,61 +505,93 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         return;
       }
 
+      const modelId = generateModelId();
+      const name = options?.name ?? getNameFromPath(modelPath);
+
       setLoading(true);
       setError(null);
-      cleanup();
-      fileMapRef.current = null;
+
+      runtimesRef.current.set(modelId, {
+        fileMap: null,
+        animationClip: null,
+      });
 
       if (kind === "vrm") {
-        loadVrmModel(modelPath, undefined, onLoaded);
+        loadVrmModel(modelId, modelPath, undefined, name, options?.onLoaded);
         return;
       }
 
-      loadMmdModel(modelPath, undefined, onLoaded);
+      loadMmdModel(modelId, modelPath, undefined, name, options?.onLoaded);
     },
-    [cleanup, loadMmdModel, loadVrmModel]
+    [loadMmdModel, loadVrmModel]
   );
 
-  const loadMmdAnimation = useCallback((vmdUrls: string[]) => {
-    const currentModel = modelRef.current;
-    const currentMesh = currentModel?.mmdMesh ?? null;
+  const loadMmdAnimation = useCallback(
+    (modelId: string, vmdUrls: string[]) => {
+      const currentModel = getModelById(modelId);
+      const currentMesh = currentModel?.mmdMesh ?? null;
 
-    if (!currentMesh || currentModel?.kind !== "mmd") {
-      setError("VMD は MMD モデルにのみ適用できます");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    clearAnimationMixer();
-
-    const manager = new THREE.LoadingManager();
-    if (fileMapRef.current) {
-      manager.setURLModifier(createURLModifier(fileMapRef.current));
-    }
-
-    const loader = new MMDLoader(manager);
-    loader.loadAnimation(
-      vmdUrls.length === 1 ? vmdUrls[0] : vmdUrls,
-      currentMesh,
-      (clip) => {
-        const nextAnimationClip = Array.isArray(clip) ? clip[0] : clip;
-        animationClipRef.current = nextAnimationClip;
-        setAnimationClip(nextAnimationClip);
-        setLoading(false);
-      },
-      undefined,
-      (err) => {
-        console.error("VMD load error:", err);
-        setError(`モーションの読み込みに失敗しました: ${getErrorMessage(err)}`);
-        setLoading(false);
+      if (!currentMesh || currentModel?.kind !== "mmd") {
+        setError("VMD は MMD モデルにのみ適用できます");
+        return;
       }
-    );
-  }, [clearAnimationMixer]);
+
+      setLoading(true);
+      setError(null);
+      clearAnimationMixer(modelId);
+
+      const runtime = runtimesRef.current.get(modelId);
+      const manager = new THREE.LoadingManager();
+      if (runtime?.fileMap) {
+        manager.setURLModifier(createURLModifier(runtime.fileMap));
+      }
+
+      const loader = new MMDLoader(manager);
+      loader.loadAnimation(
+        vmdUrls.length === 1 ? vmdUrls[0] : vmdUrls,
+        currentMesh,
+        (clip) => {
+          const nextAnimationClip = Array.isArray(clip) ? clip[0] : clip;
+          const currentRuntime = runtimesRef.current.get(modelId);
+          if (currentRuntime) {
+            currentRuntime.animationClip = nextAnimationClip;
+          }
+
+          updateModel(modelId, (current) => ({
+            ...current,
+            animationLoaded: true,
+          }));
+          setLoading(false);
+
+          if (activeModelId === modelId) {
+            void rebuildActiveMmdHelper().catch((err) => {
+              console.error("MMD helper setup error:", err);
+              setError(
+                `物理演算の初期化に失敗しました: ${getErrorMessage(err)}`
+              );
+            });
+          }
+        },
+        undefined,
+        (err) => {
+          console.error("VMD load error:", err);
+          setError(`モーションの読み込みに失敗しました: ${getErrorMessage(err)}`);
+          setLoading(false);
+        }
+      );
+    },
+    [
+      activeModelId,
+      clearAnimationMixer,
+      getModelById,
+      rebuildActiveMmdHelper,
+      updateModel,
+    ]
+  );
 
   const loadVrmAnimation = useCallback(
-    (vrmaUrls: string[]) => {
-      const currentModel = modelRef.current;
+    (modelId: string, vrmaUrls: string[]) => {
+      const currentModel = getModelById(modelId);
       const currentVrm = currentModel?.vrm;
 
       if (!currentVrm || currentModel.kind !== "vrm") {
@@ -486,12 +606,13 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
 
       setLoading(true);
       setError(null);
-      clearHelper();
-      clearAnimationMixer();
+      clearHelper(modelId);
+      clearAnimationMixer(modelId);
 
+      const runtime = runtimesRef.current.get(modelId);
       const manager = new THREE.LoadingManager();
-      if (fileMapRef.current) {
-        manager.setURLModifier(createURLModifier(fileMapRef.current));
+      if (runtime?.fileMap) {
+        manager.setURLModifier(createURLModifier(runtime.fileMap));
       }
 
       const loader = createVRMAnimationLoader(manager);
@@ -500,7 +621,6 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         (gltf) => {
           try {
             const vrmAnimation = (gltf as VRMGLTF).userData.vrmAnimations?.[0];
-
             if (!vrmAnimation) {
               throw new Error("VRMA データを取得できませんでした");
             }
@@ -508,22 +628,23 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
             const clip = createVRMAnimationClip(vrmAnimation, currentVrm);
             const mixer = new THREE.AnimationMixer(currentModel.object);
             const action = mixer.clipAction(clip);
-
             action.reset();
             action.play();
 
-            animationClipRef.current = clip;
-            setAnimationClip(clip);
-            animationMixerRef.current = mixer;
-            setAnimationMixer(mixer);
+            const currentRuntime = runtimesRef.current.get(modelId);
+            if (currentRuntime) {
+              currentRuntime.animationClip = clip;
+            }
+
+            updateModel(modelId, (current) => ({
+              ...current,
+              animationMixer: mixer,
+              animationLoaded: true,
+            }));
             setLoading(false);
           } catch (err) {
             console.error("VRMA load error:", err);
-            setError(
-              `モーションの読み込みに失敗しました: ${
-                getErrorMessage(err)
-              }`
-            );
+            setError(`モーションの読み込みに失敗しました: ${getErrorMessage(err)}`);
             setLoading(false);
           }
         },
@@ -535,26 +656,26 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         }
       );
     },
-    [clearAnimationMixer, clearHelper]
+    [clearAnimationMixer, clearHelper, getModelById, updateModel]
   );
 
   const loadAnimation = useCallback(
-    (kind: AnimationKind, animationUrls: string[]) => {
-      const currentModel = modelRef.current;
+    (kind: AnimationKind, animationUrls: string[], targetModelId?: string) => {
+      const activeModel = getModelById(targetModelId ?? activeModelId);
 
-      if (!currentModel) {
+      if (!activeModel) {
         setError("先にモデルを読み込んでください");
         return;
       }
 
       if (kind === "vmd") {
-        loadMmdAnimation(animationUrls);
+        loadMmdAnimation(activeModel.id, animationUrls);
         return;
       }
 
-      loadVrmAnimation(animationUrls);
+      loadVrmAnimation(activeModel.id, animationUrls);
     },
-    [loadMmdAnimation, loadVrmAnimation]
+    [activeModelId, getModelById, loadMmdAnimation, loadVrmAnimation]
   );
 
   useEffect(() => {
@@ -572,32 +693,28 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
   ]);
 
   useEffect(() => {
-    const currentModel = modelRef.current;
-    const currentMesh = currentModel?.mmdMesh ?? null;
+    const activeModel = getModelById(activeModelId);
+    const currentMesh = activeModel?.mmdMesh ?? null;
 
-    if (currentModel?.kind !== "mmd" || !currentMesh) {
+    if (activeModel?.kind !== "mmd" || !currentMesh) {
       return;
     }
 
-    void rebuildHelper(currentMesh, animationClipRef.current).catch((err) => {
+    void rebuildActiveMmdHelper().catch((err) => {
       console.error("MMD helper setup error:", err);
-      setError(
-        `物理演算の初期化に失敗しました: ${
-          getErrorMessage(err)
-        }`
-      );
+      setError(`物理演算の初期化に失敗しました: ${getErrorMessage(err)}`);
     });
-  }, [animationClip, model, rebuildHelper]);
+  }, [activeModelId, getModelById, rebuildActiveMmdHelper]);
 
   useEffect(() => {
-    const currentModel = modelRef.current;
-    const currentMesh = currentModel?.mmdMesh ?? null;
+    const activeModel = getModelById(activeModelId);
+    const currentMesh = activeModel?.mmdMesh ?? null;
 
-    if (currentModel?.kind !== "mmd" || !currentMesh) {
+    if (activeModel?.kind !== "mmd" || !currentMesh) {
       return;
     }
 
-    const currentHelper = helperRef.current;
+    const currentHelper = activeModel.helper;
     const physics = getPhysicsController(currentHelper, currentMesh);
     const gravity = new THREE.Vector3(
       viewerSettings.gravityX,
@@ -612,29 +729,68 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
     }
 
     if (viewerSettings.physicsEnabled) {
-      void rebuildHelper(currentMesh, animationClipRef.current).catch((err) => {
+      void rebuildActiveMmdHelper().catch((err) => {
         console.error("MMD physics reconfigure error:", err);
-        setError(
-          `物理演算の更新に失敗しました: ${
-            getErrorMessage(err)
-          }`
-        );
+        setError(`物理演算の更新に失敗しました: ${getErrorMessage(err)}`);
       });
     }
   }, [
-    rebuildHelper,
+    activeModelId,
+    getModelById,
+    rebuildActiveMmdHelper,
     viewerSettings.gravityX,
     viewerSettings.gravityY,
     viewerSettings.gravityZ,
     viewerSettings.physicsEnabled,
   ]);
 
-  useEffect(() => cleanup, [cleanup]);
+  useEffect(
+    () => () => {
+      const currentModels = modelsRef.current;
+      currentModels.forEach((model) => {
+        if (model.helper && model.mmdMesh) {
+          try {
+            model.helper.remove(model.mmdMesh);
+          } catch {
+            // ignore
+          }
+        }
+        if (model.animationMixer) {
+          model.animationMixer.stopAllAction();
+          model.animationMixer.uncacheRoot(model.object);
+        }
+        if (model.kind === "vrm") {
+          VRMUtils.deepDispose(model.object);
+        } else {
+          disposeObject3D(model.object);
+        }
+      });
+
+      for (const [modelId, runtime] of runtimesRef.current.entries()) {
+        if (runtime.fileMap) {
+          const revoked = new Set<string>();
+          for (const url of runtime.fileMap.values()) {
+            if (!revoked.has(url)) {
+              URL.revokeObjectURL(url);
+              revoked.add(url);
+            }
+          }
+          runtime.fileMap.clear();
+        }
+        runtimesRef.current.delete(modelId);
+      }
+    },
+    []
+  );
+
+  const activeModel = getModelById(activeModelId);
 
   return {
-    model,
-    helper,
-    animationMixer,
+    models,
+    activeModel,
+    activeModelId,
+    setActiveModelId,
+    removeModel,
     loading,
     error,
     loadModel,
