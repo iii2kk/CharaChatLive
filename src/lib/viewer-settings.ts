@@ -11,5 +11,5 @@ export const defaultViewerSettings: ViewerSettings = {
   directionalLightIntensity: 0.55,
   hemisphereLightIntensity: 0.2,
   diffuseMultiplier: 1,
-  emissiveMultiplier: 0.5,
+  emissiveMultiplier: 0.0,
 };
