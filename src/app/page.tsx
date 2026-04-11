@@ -6,6 +6,10 @@ import FileUploadPanel from "@/components/FileUploadPanel";
 import type { ModelEntry, ModelFile } from "@/components/FileUploadPanel";
 import { useMMDLoader } from "@/hooks/useMMDLoader";
 import {
+  defaultViewerSettings,
+  type ViewerSettings,
+} from "@/lib/viewer-settings";
+import {
   buildFileMap,
   findModelFile,
   findModelFileName,
@@ -32,6 +36,8 @@ export default function Home() {
   const [animationLoaded, setAnimationLoaded] = useState(false);
   const [fileMapState, setFileMapState] = useState<FileMap | null>(null);
   const [presetModels, setPresetModels] = useState<ModelEntry[]>([]);
+  const [viewerSettings, setViewerSettings] =
+    useState<ViewerSettings>(defaultViewerSettings);
 
   useEffect(() => {
     fetch("/api/models")
@@ -106,9 +112,15 @@ export default function Home() {
         error={error}
         modelName={modelName}
         animationLoaded={animationLoaded}
+        viewerSettings={viewerSettings}
+        onViewerSettingsChange={setViewerSettings}
       />
       <div className="flex-1 h-full">
-        <MMDViewer mesh={mesh} helper={helper} />
+        <MMDViewer
+          mesh={mesh}
+          helper={helper}
+          viewerSettings={viewerSettings}
+        />
       </div>
     </div>
   );

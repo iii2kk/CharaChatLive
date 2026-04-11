@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import {
+  defaultViewerSettings,
+  type ViewerSettings,
+} from "@/lib/viewer-settings";
 
 export interface ModelFile {
   name: string;
@@ -21,6 +25,8 @@ interface FileUploadPanelProps {
   error: string | null;
   modelName: string | null;
   animationLoaded: boolean;
+  viewerSettings: ViewerSettings;
+  onViewerSettingsChange: React.Dispatch<React.SetStateAction<ViewerSettings>>;
 }
 
 export default function FileUploadPanel({
@@ -32,6 +38,8 @@ export default function FileUploadPanel({
   error,
   modelName,
   animationLoaded,
+  viewerSettings,
+  onViewerSettingsChange,
 }: FileUploadPanelProps) {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const vmdInputRef = useRef<HTMLInputElement>(null);
@@ -94,6 +102,60 @@ export default function FileUploadPanel({
     e.preventDefault();
     e.stopPropagation();
   }, []);
+
+  const handleViewerSettingChange = useCallback(
+    (key: keyof ViewerSettings, value: number) => {
+      onViewerSettingsChange((prev) => ({
+        ...prev,
+        [key]: value,
+      }));
+    },
+    [onViewerSettingsChange]
+  );
+
+  const viewerControls: Array<{
+    key: keyof ViewerSettings;
+    label: string;
+    min: number;
+    max: number;
+    step: number;
+  }> = [
+    {
+      key: "ambientLightIntensity",
+      label: "Ambient Light",
+      min: 0,
+      max: 1.2,
+      step: 0.05,
+    },
+    {
+      key: "directionalLightIntensity",
+      label: "Directional Light",
+      min: 0,
+      max: 1.2,
+      step: 0.05,
+    },
+    {
+      key: "hemisphereLightIntensity",
+      label: "Hemisphere Light",
+      min: 0,
+      max: 1,
+      step: 0.05,
+    },
+    {
+      key: "diffuseMultiplier",
+      label: "材質 Diffuse",
+      min: 0.4,
+      max: 1.6,
+      step: 0.05,
+    },
+    {
+      key: "emissiveMultiplier",
+      label: "Ambient -> Emissive",
+      min: 0,
+      max: 1.2,
+      step: 0.05,
+    },
+  ];
 
   return (
     <div className="w-80 min-w-80 h-full bg-gray-900 text-gray-100 p-4 flex flex-col gap-4 overflow-y-auto border-r border-gray-700">
@@ -252,6 +314,45 @@ export default function FileUploadPanel({
             PMX/PMD モデルを含むフォルダを選択してください
           </p>
         )}
+      </div>
+
+      <div className="border-t border-gray-700 pt-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm text-gray-400">表示調整</p>
+          <button
+            type="button"
+            onClick={() => onViewerSettingsChange(defaultViewerSettings)}
+            className="text-xs px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 transition-colors"
+          >
+            リセット
+          </button>
+        </div>
+        <div className="flex flex-col gap-3">
+          {viewerControls.map((control) => (
+            <label key={control.key} className="flex flex-col gap-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-300">{control.label}</span>
+                <span className="text-gray-500">
+                  {viewerSettings[control.key].toFixed(2)}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={control.min}
+                max={control.max}
+                step={control.step}
+                value={viewerSettings[control.key]}
+                onChange={(e) =>
+                  handleViewerSettingChange(
+                    control.key,
+                    Number(e.currentTarget.value)
+                  )
+                }
+                className="accent-blue-400"
+              />
+            </label>
+          ))}
+        </div>
       </div>
     </div>
   );

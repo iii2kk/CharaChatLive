@@ -3,26 +3,32 @@
 import { OrbitControls, Grid } from "@react-three/drei";
 import type { SkinnedMesh } from "three";
 import type { MMDAnimationHelper } from "three/examples/jsm/animation/MMDAnimationHelper";
+import type { ViewerSettings } from "@/lib/viewer-settings";
 import MMDModel from "./MMDModel";
 
 interface MMDSceneProps {
   mesh: SkinnedMesh | null;
   helper: MMDAnimationHelper | null;
+  viewerSettings: ViewerSettings;
 }
 
-export default function MMDScene({ mesh, helper }: MMDSceneProps) {
+export default function MMDScene({
+  mesh,
+  helper,
+  viewerSettings,
+}: MMDSceneProps) {
   return (
     <>
-      <ambientLight intensity={0.6} />
+      <ambientLight intensity={viewerSettings.ambientLightIntensity} />
       <directionalLight
         position={[5, 20, 10]}
-        intensity={0.8}
+        intensity={viewerSettings.directionalLightIntensity}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
       />
       <hemisphereLight
-        args={[0xffffff, 0x444444, 0.4]}
+        args={[0xffffff, 0x444444, viewerSettings.hemisphereLightIntensity]}
       />
 
       <Grid
