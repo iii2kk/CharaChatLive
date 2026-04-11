@@ -135,6 +135,27 @@ export default function FileUploadPanel({
       step: 0.05,
     },
     {
+      key: "directionalLightX",
+      label: "Directional X",
+      min: -30,
+      max: 30,
+      step: 1,
+    },
+    {
+      key: "directionalLightY",
+      label: "Directional Y",
+      min: 0,
+      max: 40,
+      step: 1,
+    },
+    {
+      key: "directionalLightZ",
+      label: "Directional Z",
+      min: -30,
+      max: 30,
+      step: 1,
+    },
+    {
       key: "hemisphereLightIntensity",
       label: "Hemisphere Light",
       min: 0,

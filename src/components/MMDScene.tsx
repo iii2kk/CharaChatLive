@@ -1,6 +1,8 @@
 "use client";
 
 import { OrbitControls, Grid } from "@react-three/drei";
+import { useEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
 import type { SkinnedMesh } from "three";
 import type { MMDAnimationHelper } from "three/examples/jsm/animation/MMDAnimationHelper";
 import type { ViewerSettings } from "@/lib/viewer-settings";
@@ -17,16 +19,33 @@ export default function MMDScene({
   helper,
   viewerSettings,
 }: MMDSceneProps) {
+  const directionalLightRef = useRef<THREE.DirectionalLight>(null);
+  const directionalLightTarget = useMemo(() => new THREE.Object3D(), []);
+
+  useEffect(() => {
+    directionalLightTarget.position.set(0, 10, 0);
+
+    if (directionalLightRef.current) {
+      directionalLightRef.current.target = directionalLightTarget;
+    }
+  }, [directionalLightTarget]);
+
   return (
     <>
       <ambientLight intensity={viewerSettings.ambientLightIntensity} />
       <directionalLight
-        position={[5, 20, 10]}
+        ref={directionalLightRef}
+        position={[
+          viewerSettings.directionalLightX,
+          viewerSettings.directionalLightY,
+          viewerSettings.directionalLightZ,
+        ]}
         intensity={viewerSettings.directionalLightIntensity}
         castShadow
         shadow-mapSize-width={2048}
         shadow-mapSize-height={2048}
       />
+      <primitive object={directionalLightTarget} />
       <hemisphereLight
         args={[0xffffff, 0x444444, viewerSettings.hemisphereLightIntensity]}
       />
