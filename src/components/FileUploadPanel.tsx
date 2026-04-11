@@ -5,6 +5,7 @@ import {
   defaultViewerSettings,
   type ViewerSettings,
 } from "@/lib/viewer-settings";
+import type { ModelKind } from "@/lib/file-map";
 
 export interface ModelFile {
   name: string;
@@ -22,10 +23,11 @@ interface FileUploadPanelProps {
   presetModels: ModelEntry[];
   onPresetSelected: (file: ModelFile) => void;
   onModelFolderSelected: (files: FileList) => void;
-  onVmdFilesSelected: (files: FileList) => void;
+  onAnimationFilesSelected: (files: FileList) => void;
   loading: boolean;
   error: string | null;
   modelName: string | null;
+  modelKind: ModelKind | null;
   animationLoaded: boolean;
   viewerSettings: ViewerSettings;
   onViewerSettingsChange: React.Dispatch<React.SetStateAction<ViewerSettings>>;
@@ -35,16 +37,17 @@ export default function FileUploadPanel({
   presetModels,
   onPresetSelected,
   onModelFolderSelected,
-  onVmdFilesSelected,
+  onAnimationFilesSelected,
   loading,
   error,
   modelName,
+  modelKind,
   animationLoaded,
   viewerSettings,
   onViewerSettingsChange,
 }: FileUploadPanelProps) {
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const vmdInputRef = useRef<HTMLInputElement>(null);
+  const animationInputRef = useRef<HTMLInputElement>(null);
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
 
   const toggleFolder = useCallback((folder: string) => {
@@ -68,13 +71,13 @@ export default function FileUploadPanel({
     [onModelFolderSelected]
   );
 
-  const handleVmdChange = useCallback(
+  const handleAnimationChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files.length > 0) {
-        onVmdFilesSelected(e.target.files);
+        onAnimationFilesSelected(e.target.files);
       }
     },
-    [onVmdFilesSelected]
+    [onAnimationFilesSelected]
   );
 
   const handleDrop = useCallback(
@@ -83,21 +86,21 @@ export default function FileUploadPanel({
       e.stopPropagation();
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
         const hasModel = Array.from(e.dataTransfer.files).some((f) =>
-          /\.(pmx|pmd)$/i.test(f.name)
+          /\.(pmx|pmd|vrm)$/i.test(f.name)
         );
         if (hasModel) {
           onModelFolderSelected(e.dataTransfer.files);
         } else {
-          const hasVmd = Array.from(e.dataTransfer.files).some((f) =>
-            /\.vmd$/i.test(f.name)
+          const hasAnimation = Array.from(e.dataTransfer.files).some((f) =>
+            /\.(vmd|vrma)$/i.test(f.name)
           );
-          if (hasVmd) {
-            onVmdFilesSelected(e.dataTransfer.files);
+          if (hasAnimation) {
+            onAnimationFilesSelected(e.dataTransfer.files);
           }
         }
       }
     },
-    [onModelFolderSelected, onVmdFilesSelected]
+    [onAnimationFilesSelected, onModelFolderSelected]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -185,7 +188,7 @@ export default function FileUploadPanel({
       min: -100,
       max: 100,
       step: 1,
-      disabled: !viewerSettings.physicsEnabled,
+      disabled: modelKind !== "mmd" || !viewerSettings.physicsEnabled,
     },
     {
       key: "gravityY",
@@ -193,7 +196,7 @@ export default function FileUploadPanel({
       min: -200,
       max: 50,
       step: 1,
-      disabled: !viewerSettings.physicsEnabled,
+      disabled: modelKind !== "mmd" || !viewerSettings.physicsEnabled,
     },
     {
       key: "gravityZ",
@@ -201,13 +204,13 @@ export default function FileUploadPanel({
       min: -100,
       max: 100,
       step: 1,
-      disabled: !viewerSettings.physicsEnabled,
+      disabled: modelKind !== "mmd" || !viewerSettings.physicsEnabled,
     },
   ];
 
   return (
     <div className="w-80 min-w-80 h-full bg-gray-900 text-gray-100 p-4 flex flex-col gap-4 overflow-y-auto border-r border-gray-700">
-      <h1 className="text-lg font-bold">MMD Viewer</h1>
+      <h1 className="text-lg font-bold">MMD / VRM Viewer</h1>
 
       {/* Preset Models */}
       {presetModels.length > 0 && (
@@ -284,30 +287,32 @@ export default function FileUploadPanel({
           モデルフォルダを選択
         </p>
         <p className="text-xs text-gray-400 mt-1">
-          .pmx / .pmd + テクスチャを含むフォルダ
+          .pmx / .pmd / .vrm + 関連ファイルを含むフォルダ
         </p>
       </div>
 
-      {/* VMD Upload */}
+      {/* Animation Upload */}
       <div
         className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center cursor-pointer hover:border-green-400 hover:bg-gray-800 transition-colors"
-        onClick={() => vmdInputRef.current?.click()}
+        onClick={() => animationInputRef.current?.click()}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
       >
         <input
-          ref={vmdInputRef}
+          ref={animationInputRef}
           type="file"
           className="hidden"
-          accept=".vmd"
+          accept=".vmd,.vrma"
           multiple
-          onChange={handleVmdChange}
+          onChange={handleAnimationChange}
         />
         <div className="text-3xl mb-2">🎬</div>
         <p className="text-sm font-medium">
-          モーションファイルを選択
+          アニメーションファイルを選択
         </p>
-        <p className="text-xs text-gray-400 mt-1">.vmd ファイル (複数可)</p>
+        <p className="text-xs text-gray-400 mt-1">
+          .vmd / .vrma ファイル
+        </p>
       </div>
 
       {/* Status */}
@@ -352,14 +357,14 @@ export default function FileUploadPanel({
 
         {animationLoaded && (
           <div className="text-sm">
-            <span className="text-gray-400">モーション: </span>
+            <span className="text-gray-400">アニメーション: </span>
             <span className="text-green-400">再生中</span>
           </div>
         )}
 
         {!modelName && !loading && (
           <p className="text-xs text-gray-500">
-            PMX/PMD モデルを含むフォルダを選択してください
+            PMX/PMD/VRM モデルを含むフォルダを選択してください
           </p>
         )}
       </div>
@@ -377,10 +382,11 @@ export default function FileUploadPanel({
         </div>
         <div className="flex flex-col gap-3">
           <label className="flex items-center justify-between rounded bg-gray-800/50 px-3 py-2 text-sm">
-            <span className="text-gray-300">Physics</span>
+            <span className="text-gray-300">Physics (MMD)</span>
             <input
               type="checkbox"
               checked={viewerSettings.physicsEnabled}
+              disabled={modelKind !== "mmd"}
               onChange={(e) => {
                 const { checked } = e.currentTarget;
                 onViewerSettingsChange((prev) => ({
@@ -388,7 +394,7 @@ export default function FileUploadPanel({
                   physicsEnabled: checked,
                 }));
               }}
-              className="h-4 w-4 accent-blue-400"
+              className="h-4 w-4 accent-blue-400 disabled:opacity-40"
             />
           </label>
           {viewerControls.map((control) => (

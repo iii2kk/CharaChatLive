@@ -1,4 +1,17 @@
 export type FileMap = Map<string, string>;
+export type ModelKind = "mmd" | "vrm";
+export type AnimationKind = "vmd" | "vrma";
+
+export interface ModelFileMatch {
+  kind: ModelKind;
+  name: string;
+  url: string;
+}
+
+const mmdModelPattern = /\.(pmx|pmd)$/i;
+const vrmModelPattern = /\.vrm$/i;
+const vmdPattern = /\.vmd$/i;
+const vrmaPattern = /\.vrma$/i;
 
 export function buildFileMap(files: FileList): FileMap {
   const map: FileMap = new Map();
@@ -24,35 +37,66 @@ export function buildFileMap(files: FileList): FileMap {
   return map;
 }
 
+export function getModelKind(path: string): ModelKind | null {
+  if (mmdModelPattern.test(path)) return "mmd";
+  if (vrmModelPattern.test(path)) return "vrm";
+  return null;
+}
+
+export function getAnimationKind(path: string): AnimationKind | null {
+  if (vmdPattern.test(path)) return "vmd";
+  if (vrmaPattern.test(path)) return "vrma";
+  return null;
+}
+
 export function findModelFile(map: FileMap): string | null {
+  return findModelFileEntry(map)?.url ?? null;
+}
+
+export function findModelFileEntry(map: FileMap): ModelFileMatch | null {
   for (const [path, url] of map.entries()) {
-    if (/\.(pmx|pmd)$/i.test(path)) return url;
+    const kind = getModelKind(path);
+    if (!kind) continue;
+
+    const parts = path.split("/");
+
+    return {
+      kind,
+      name: parts[parts.length - 1],
+      url,
+    };
   }
+
   return null;
 }
 
 export function findModelFileName(map: FileMap): string | null {
-  for (const path of map.keys()) {
-    if (/\.(pmx|pmd)$/i.test(path)) {
-      const parts = path.split("/");
-      return parts[parts.length - 1];
-    }
-  }
-  return null;
+  return findModelFileEntry(map)?.name ?? null;
 }
 
-export function findVmdFiles(map: FileMap): string[] {
-  const vmds: string[] = [];
+export function findAnimationFiles(
+  map: FileMap,
+  kind: AnimationKind | null
+): string[] {
+  if (!kind) {
+    return [];
+  }
+
+  const animations: string[] = [];
   const seen = new Set<string>();
 
   for (const [path, url] of map.entries()) {
-    if (/\.vmd$/i.test(path) && !seen.has(url)) {
+    if (getAnimationKind(path) !== kind || seen.has(url)) {
+      continue;
+    }
+
+    if (!seen.has(url)) {
       seen.add(url);
-      vmds.push(url);
+      animations.push(url);
     }
   }
 
-  return vmds;
+  return animations;
 }
 
 export function revokeFileMap(map: FileMap): void {

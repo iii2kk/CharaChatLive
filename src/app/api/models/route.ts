@@ -7,6 +7,44 @@ export interface ModelEntry {
   files: { name: string; path: string }[];
 }
 
+function collectModelFiles(
+  publicRootDir: string,
+  currentDir: string,
+  displayRootDir: string
+): Array<{ name: string; path: string }> {
+  const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+  const files: Array<{ name: string; path: string }> = [];
+
+  for (const entry of entries) {
+    const fullPath = path.join(currentDir, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...collectModelFiles(publicRootDir, fullPath, displayRootDir));
+      continue;
+    }
+
+    if (!/\.(pmx|pmd|vrm)$/i.test(entry.name)) {
+      continue;
+    }
+
+    const publicRelativePath = path
+      .relative(publicRootDir, fullPath)
+      .split(path.sep)
+      .join("/");
+    const displayRelativePath = path
+      .relative(displayRootDir, fullPath)
+      .split(path.sep)
+      .join("/");
+
+    files.push({
+      name: displayRelativePath,
+      path: `/models/${publicRelativePath}`,
+    });
+  }
+
+  return files;
+}
+
 export async function GET() {
   const modelsDir = path.join(process.cwd(), "public", "models");
 
@@ -21,16 +59,12 @@ export async function GET() {
     if (!entry.isDirectory()) continue;
 
     const dirPath = path.join(modelsDir, entry.name);
-    const files = fs.readdirSync(dirPath);
-    const pmxFiles = files.filter((f) => /\.(pmx|pmd)$/i.test(f));
+    const modelFiles = collectModelFiles(modelsDir, dirPath, dirPath);
 
-    if (pmxFiles.length > 0) {
+    if (modelFiles.length > 0) {
       models.push({
         folder: entry.name,
-        files: pmxFiles.map((f) => ({
-          name: f,
-          path: `/models/${entry.name}/${f}`,
-        })),
+        files: modelFiles,
       });
     }
   }

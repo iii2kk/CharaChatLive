@@ -3,20 +3,25 @@
 import { OrbitControls, Grid } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import type { SkinnedMesh } from "three";
+import type { AnimationMixer, Object3D } from "three";
 import type { MMDAnimationHelper } from "three/examples/jsm/animation/MMDAnimationHelper";
+import type { VRM } from "@pixiv/three-vrm";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import MMDModel from "./MMDModel";
 
 interface MMDSceneProps {
-  mesh: SkinnedMesh | null;
+  object: Object3D | null;
   helper: MMDAnimationHelper | null;
+  animationMixer: AnimationMixer | null;
+  vrm: VRM | null;
   viewerSettings: ViewerSettings;
 }
 
 export default function MMDScene({
-  mesh,
+  object,
   helper,
+  animationMixer,
+  vrm,
   viewerSettings,
 }: MMDSceneProps) {
   const directionalLightRef = useRef<THREE.DirectionalLight>(null);
@@ -63,7 +68,12 @@ export default function MMDScene({
         infiniteGrid
       />
 
-      <MMDModel mesh={mesh} helper={helper} />
+      <MMDModel
+        object={object}
+        helper={helper}
+        animationMixer={animationMixer}
+        vrm={vrm}
+      />
 
       <OrbitControls
         target={[0, 10, 0]}
