@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import FileUploadPanel from "@/components/FileUploadPanel";
-import type { PresetModel } from "@/components/FileUploadPanel";
+import type { ModelEntry, ModelFile } from "@/components/FileUploadPanel";
 import { useMMDLoader } from "@/hooks/useMMDLoader";
 import {
   buildFileMap,
@@ -31,24 +31,24 @@ export default function Home() {
   const [modelName, setModelName] = useState<string | null>(null);
   const [animationLoaded, setAnimationLoaded] = useState(false);
   const [fileMapState, setFileMapState] = useState<FileMap | null>(null);
-  const [presetModels, setPresetModels] = useState<PresetModel[]>([]);
+  const [presetModels, setPresetModels] = useState<ModelEntry[]>([]);
 
   useEffect(() => {
     fetch("/api/models")
       .then((res) => res.json())
-      .then((data: PresetModel[]) => setPresetModels(data))
+      .then((data: ModelEntry[]) => setPresetModels(data))
       .catch(() => {});
   }, []);
 
   const handlePresetSelected = useCallback(
-    (model: PresetModel) => {
+    (file: ModelFile) => {
       if (fileMapState) {
         revokeFileMap(fileMapState);
         setFileMapState(null);
       }
-      setModelName(model.name);
+      setModelName(file.name);
       setAnimationLoaded(false);
-      loadModelFromPath(model.path);
+      loadModelFromPath(file.path);
     },
     [fileMapState, loadModelFromPath]
   );

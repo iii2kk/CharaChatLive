@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
+export interface ModelEntry {
+  folder: string;
+  files: { name: string; path: string }[];
+}
+
 export async function GET() {
   const modelsDir = path.join(process.cwd(), "public", "models");
 
@@ -10,19 +15,22 @@ export async function GET() {
   }
 
   const entries = fs.readdirSync(modelsDir, { withFileTypes: true });
-  const models: { name: string; path: string }[] = [];
+  const models: ModelEntry[] = [];
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
 
     const dirPath = path.join(modelsDir, entry.name);
     const files = fs.readdirSync(dirPath);
-    const pmxFile = files.find((f) => /\.(pmx|pmd)$/i.test(f));
+    const pmxFiles = files.filter((f) => /\.(pmx|pmd)$/i.test(f));
 
-    if (pmxFile) {
+    if (pmxFiles.length > 0) {
       models.push({
-        name: entry.name,
-        path: `/models/${entry.name}/${pmxFile}`,
+        folder: entry.name,
+        files: pmxFiles.map((f) => ({
+          name: f,
+          path: `/models/${entry.name}/${f}`,
+        })),
       });
     }
   }
