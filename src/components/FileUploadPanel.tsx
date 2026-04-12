@@ -265,17 +265,14 @@ export default function FileUploadPanel({
               return (
                 <div
                   key={loadedModel.id}
+                  onClick={() => onActiveModelChange(loadedModel.id)}
                   className={`rounded border px-3 py-2 transition-colors ${
                     isActive
                       ? "border-blue-500 bg-blue-950/40"
                       : "border-gray-700 bg-gray-800/40"
-                  }`}
+                  } cursor-pointer`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => onActiveModelChange(loadedModel.id)}
-                    className="w-full text-left"
-                  >
+                  <div className="w-full text-left">
                     <div className="flex items-center gap-2">
                       <span className="truncate text-sm text-gray-100">
                         {loadedModel.name}
@@ -289,10 +286,13 @@ export default function FileUploadPanel({
                         ? "アニメーションあり"
                         : "アニメーションなし"}
                     </div>
-                  </button>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => onRemoveModel(loadedModel.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveModel(loadedModel.id);
+                    }}
                     className="mt-2 text-xs text-red-300 hover:text-red-200"
                   >
                     削除
