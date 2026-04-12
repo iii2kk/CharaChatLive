@@ -17,6 +17,10 @@ import {
   revokeFileMap,
   type AnimationKind,
 } from "@/lib/file-map";
+import {
+  createDirectionalLight,
+  type SceneLight,
+} from "@/lib/scene-lights";
 
 const MMDViewer = dynamic(() => import("@/components/MMDViewer"), {
   ssr: false,
@@ -26,6 +30,12 @@ export default function Home() {
   const [viewerSettings, setViewerSettings] =
     useState<ViewerSettings>(defaultViewerSettings);
   const [freeCameraEnabled, setFreeCameraEnabled] = useState(false);
+  const [lights, setLights] = useState<SceneLight[]>(() => [
+    createDirectionalLight({ name: "Directional Light 1" }),
+  ]);
+  const [activeLightId, setActiveLightId] = useState<string | null>(() =>
+    lights[0]?.id ?? null
+  );
   const {
     models,
     activeModel,
@@ -142,6 +152,10 @@ export default function Home() {
         modelName={activeModel?.name ?? null}
         modelKind={activeModel?.kind ?? null}
         animationLoaded={activeModel?.animationLoaded ?? false}
+        lights={lights}
+        activeLightId={activeLightId}
+        onActiveLightChange={setActiveLightId}
+        onLightsChange={setLights}
         freeCameraEnabled={freeCameraEnabled}
         onFreeCameraEnabledChange={setFreeCameraEnabled}
         viewerSettings={viewerSettings}
@@ -153,6 +167,10 @@ export default function Home() {
           activeModel={activeModel}
           activeModelId={activeModelId}
           onActiveModelChange={setActiveModelId}
+          lights={lights}
+          activeLightId={activeLightId}
+          onActiveLightChange={setActiveLightId}
+          onLightsChange={setLights}
           freeCameraEnabled={freeCameraEnabled}
           viewerSettings={viewerSettings}
         />

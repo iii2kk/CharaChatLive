@@ -5,6 +5,7 @@ import { Suspense, useEffect } from "react";
 import * as THREE from "three";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { LoadedModel } from "@/hooks/useModelLoader";
+import type { SceneLight } from "@/lib/scene-lights";
 import MMDScene from "./MMDScene";
 
 interface MMDViewerProps {
@@ -12,6 +13,10 @@ interface MMDViewerProps {
   activeModel: LoadedModel | null;
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
+  lights: SceneLight[];
+  activeLightId: string | null;
+  onActiveLightChange: (lightId: string | null) => void;
+  onLightsChange: React.Dispatch<React.SetStateAction<SceneLight[]>>;
   freeCameraEnabled: boolean;
   viewerSettings: ViewerSettings;
 }
@@ -76,6 +81,10 @@ export default function MMDViewer({
   activeModel,
   activeModelId,
   onActiveModelChange,
+  lights,
+  activeLightId,
+  onActiveLightChange,
+  onLightsChange,
   freeCameraEnabled,
   viewerSettings,
 }: MMDViewerProps) {
@@ -92,8 +101,11 @@ export default function MMDViewer({
           activeModel={activeModel}
           activeModelId={activeModelId}
           onActiveModelChange={onActiveModelChange}
+          lights={lights}
+          activeLightId={activeLightId}
+          onActiveLightChange={onActiveLightChange}
+          onLightsChange={onLightsChange}
           freeCameraEnabled={freeCameraEnabled}
-          viewerSettings={viewerSettings}
         />
       </Suspense>
     </Canvas>

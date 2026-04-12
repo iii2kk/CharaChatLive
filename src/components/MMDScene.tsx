@@ -5,18 +5,22 @@ import { useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { LoadedModel } from "@/hooks/useModelLoader";
+import type { SceneLight } from "@/lib/scene-lights";
 import FreeCameraControls from "./FreeCameraControls";
 import MMDModel from "./MMDModel";
+import SceneLights from "./SceneLights";
 
 interface MMDSceneProps {
   models: LoadedModel[];
   activeModel: LoadedModel | null;
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
+  lights: SceneLight[];
+  activeLightId: string | null;
+  onActiveLightChange: (lightId: string | null) => void;
+  onLightsChange: React.Dispatch<React.SetStateAction<SceneLight[]>>;
   freeCameraEnabled: boolean;
-  viewerSettings: ViewerSettings;
 }
 
 export default function MMDScene({
@@ -24,17 +28,20 @@ export default function MMDScene({
   activeModel,
   activeModelId,
   onActiveModelChange,
+  lights,
+  activeLightId,
+  onActiveLightChange,
+  onLightsChange,
   freeCameraEnabled,
-  viewerSettings,
 }: MMDSceneProps) {
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 10, 0), []);
   const { camera, invalidate } = useThree();
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
-  const directionalLightRef = useRef<THREE.DirectionalLight>(null);
-  const directionalLightTarget = useMemo(() => new THREE.Object3D(), []);
   const [isDraggingModel, setIsDraggingModel] = useState(false);
+  const [isDraggingLight, setIsDraggingLight] = useState(false);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null);
+  const [isHoveringLightHandle, setIsHoveringLightHandle] = useState(false);
   const previousModelCountRef = useRef(models.length);
   const previousActiveModelIdRef = useRef<string | null>(activeModelId);
   const previousFreeCameraEnabledRef = useRef(freeCameraEnabled);
@@ -42,15 +49,9 @@ export default function MMDScene({
   const orbitEnabled =
     !freeCameraEnabled &&
     !isDraggingModel &&
+    !isDraggingLight &&
+    !isHoveringLightHandle &&
     !(isShiftPressed && hoveredModelId !== null);
-
-  useEffect(() => {
-    directionalLightTarget.position.set(0, 10, 0);
-
-    if (directionalLightRef.current) {
-      directionalLightRef.current.target = directionalLightTarget;
-    }
-  }, [directionalLightTarget]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -68,7 +69,9 @@ export default function MMDScene({
     const handleWindowBlur = () => {
       setIsShiftPressed(false);
       setIsDraggingModel(false);
+      setIsDraggingLight(false);
       setHoveredModelId(null);
+      setIsHoveringLightHandle(false);
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -176,24 +179,6 @@ export default function MMDScene({
 
   return (
     <>
-      <ambientLight intensity={viewerSettings.ambientLightIntensity} />
-      <directionalLight
-        ref={directionalLightRef}
-        position={[
-          viewerSettings.directionalLightX,
-          viewerSettings.directionalLightY,
-          viewerSettings.directionalLightZ,
-        ]}
-        intensity={viewerSettings.directionalLightIntensity}
-        castShadow
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
-      />
-      <primitive object={directionalLightTarget} />
-      <hemisphereLight
-        args={[0xffffff, 0x444444, viewerSettings.hemisphereLightIntensity]}
-      />
-
       <Grid
         args={[50, 50]}
         position={[0, 0, 0]}
@@ -214,6 +199,16 @@ export default function MMDScene({
         onDraggingChange={setIsDraggingModel}
         onHoveredModelChange={setHoveredModelId}
         interactionEnabled={!freeCameraEnabled}
+      />
+
+      <SceneLights
+        lights={lights}
+        activeLightId={activeLightId}
+        onActiveLightChange={onActiveLightChange}
+        onLightsChange={onLightsChange}
+        interactionEnabled={!freeCameraEnabled}
+        onDraggingChange={setIsDraggingLight}
+        onHoveredHandleChange={setIsHoveringLightHandle}
       />
 
       <FreeCameraControls
