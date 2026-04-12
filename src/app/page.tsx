@@ -2,8 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
-import FileUploadPanel from "@/components/FileUploadPanel";
-import type { ModelEntry, ModelFile } from "@/components/FileUploadPanel";
+import FloatingWindowOverlay from "@/components/FloatingWindowOverlay";
+import type { ModelEntry, ModelFile } from "@/types/models";
 import { useModelLoader } from "@/hooks/useModelLoader";
 import {
   defaultViewerSettings,
@@ -137,8 +137,22 @@ export default function Home() {
   );
 
   return (
-    <div className="flex h-full w-full">
-      <FileUploadPanel
+    <div className="h-full w-full relative">
+      <div className="h-full w-full">
+        <MMDViewer
+          models={models}
+          activeModel={activeModel}
+          activeModelId={activeModelId}
+          onActiveModelChange={setActiveModelId}
+          lights={lights}
+          activeLightId={activeLightId}
+          onActiveLightChange={setActiveLightId}
+          onLightsChange={setLights}
+          freeCameraEnabled={freeCameraEnabled}
+          viewerSettings={viewerSettings}
+        />
+      </div>
+      <FloatingWindowOverlay
         presetModels={presetModels}
         onPresetSelected={handlePresetSelected}
         onModelFolderSelected={handleModelFolderSelected}
@@ -161,20 +175,6 @@ export default function Home() {
         viewerSettings={viewerSettings}
         onViewerSettingsChange={setViewerSettings}
       />
-      <div className="flex-1 h-full">
-        <MMDViewer
-          models={models}
-          activeModel={activeModel}
-          activeModelId={activeModelId}
-          onActiveModelChange={setActiveModelId}
-          lights={lights}
-          activeLightId={activeLightId}
-          onActiveLightChange={setActiveLightId}
-          onLightsChange={setLights}
-          freeCameraEnabled={freeCameraEnabled}
-          viewerSettings={viewerSettings}
-        />
-      </div>
     </div>
   );
 }
