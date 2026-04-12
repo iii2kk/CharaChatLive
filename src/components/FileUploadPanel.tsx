@@ -34,6 +34,8 @@ interface FileUploadPanelProps {
   modelName: string | null;
   modelKind: ModelKind | null;
   animationLoaded: boolean;
+  freeCameraEnabled: boolean;
+  onFreeCameraEnabledChange: (enabled: boolean) => void;
   viewerSettings: ViewerSettings;
   onViewerSettingsChange: React.Dispatch<React.SetStateAction<ViewerSettings>>;
 }
@@ -52,6 +54,8 @@ export default function FileUploadPanel({
   modelName,
   modelKind,
   animationLoaded,
+  freeCameraEnabled,
+  onFreeCameraEnabledChange,
   viewerSettings,
   onViewerSettingsChange,
 }: FileUploadPanelProps) {
@@ -438,6 +442,38 @@ export default function FileUploadPanel({
 
       <div className="border-t border-gray-700 pt-4">
         <div className="flex items-center justify-between mb-3">
+          <p className="text-sm text-gray-400">カメラ操作</p>
+          <button
+            type="button"
+            onClick={() => onFreeCameraEnabledChange(!freeCameraEnabled)}
+            className={`text-xs px-2 py-1 rounded transition-colors ${
+              freeCameraEnabled
+                ? "bg-cyan-700 hover:bg-cyan-600 text-white"
+                : "bg-gray-800 hover:bg-gray-700 text-gray-200"
+            }`}
+          >
+            {freeCameraEnabled ? "フリーカメラ ON" : "通常カメラ"}
+          </button>
+        </div>
+        <div className="text-xs text-gray-500">
+          {freeCameraEnabled ? (
+            <>
+              <p>W/A/S/D: 前後左右移動</p>
+              <p className="mt-1">Q / E: 上下移動</p>
+              <p className="mt-1">左ドラッグ: 視線移動</p>
+              <p className="mt-1">Shift: 加速</p>
+            </>
+          ) : (
+            <>
+              <p>ドラッグ: 視点移動</p>
+              <p className="mt-1">Shift + ドラッグ: 選択モデルを移動</p>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="border-t border-gray-700 pt-4">
+        <div className="flex items-center justify-between mb-3">
           <p className="text-sm text-gray-400">表示調整</p>
           <button
             type="button"
@@ -495,8 +531,9 @@ export default function FileUploadPanel({
       <div className="border-t border-gray-700 pt-4 text-xs text-gray-500">
         <p>3Dビュー操作</p>
         <p className="mt-1">クリック: モデル選択</p>
-        <p className="mt-1">ドラッグ: 視点移動</p>
-        <p className="mt-1">Shift + ドラッグ: 選択モデルを移動</p>
+        <p className="mt-1">通常カメラ: ドラッグで視点移動</p>
+        <p className="mt-1">通常カメラ: Shift + ドラッグで選択モデル移動</p>
+        <p className="mt-1">フリーカメラ: W/A/S/D + 左ドラッグ</p>
       </div>
     </div>
   );

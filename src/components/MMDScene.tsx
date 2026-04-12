@@ -7,6 +7,7 @@ import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { LoadedModel } from "@/hooks/useModelLoader";
+import FreeCameraControls from "./FreeCameraControls";
 import MMDModel from "./MMDModel";
 
 interface MMDSceneProps {
@@ -14,6 +15,7 @@ interface MMDSceneProps {
   activeModel: LoadedModel | null;
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
+  freeCameraEnabled: boolean;
   viewerSettings: ViewerSettings;
 }
 
@@ -22,6 +24,7 @@ export default function MMDScene({
   activeModel,
   activeModelId,
   onActiveModelChange,
+  freeCameraEnabled,
   viewerSettings,
 }: MMDSceneProps) {
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 10, 0), []);
@@ -35,7 +38,9 @@ export default function MMDScene({
   const previousModelCountRef = useRef(models.length);
   const previousActiveModelIdRef = useRef<string | null>(activeModelId);
   const orbitEnabled =
-    !isDraggingModel && !(isShiftPressed && hoveredModelId !== null);
+    !freeCameraEnabled &&
+    !isDraggingModel &&
+    !(isShiftPressed && hoveredModelId !== null);
 
   useEffect(() => {
     directionalLightTarget.position.set(0, 10, 0);
@@ -76,7 +81,11 @@ export default function MMDScene({
   }, []);
 
   useEffect(() => {
-    if (!activeModel || !(camera instanceof THREE.PerspectiveCamera)) {
+    if (
+      freeCameraEnabled ||
+      !activeModel ||
+      !(camera instanceof THREE.PerspectiveCamera)
+    ) {
       previousModelCountRef.current = models.length;
       previousActiveModelIdRef.current = activeModelId;
       return;
@@ -137,7 +146,15 @@ export default function MMDScene({
     controlsRef.current?.target.copy(nextTarget);
     controlsRef.current?.update();
     invalidate();
-  }, [activeModel, activeModelId, camera, defaultTarget, invalidate, models.length]);
+  }, [
+    activeModel,
+    activeModelId,
+    camera,
+    defaultTarget,
+    freeCameraEnabled,
+    invalidate,
+    models.length,
+  ]);
 
   return (
     <>
@@ -178,14 +195,17 @@ export default function MMDScene({
         onActiveModelChange={onActiveModelChange}
         onDraggingChange={setIsDraggingModel}
         onHoveredModelChange={setHoveredModelId}
+        interactionEnabled={!freeCameraEnabled}
       />
+
+      <FreeCameraControls enabled={freeCameraEnabled} />
 
       <OrbitControls
         ref={controlsRef}
         enabled={orbitEnabled}
         target={[0, 10, 0]}
-        minDistance={1}
-        maxDistance={200}
+        minDistance={0}
+        maxDistance={Infinity}
         makeDefault
       />
     </>

@@ -11,6 +11,7 @@ interface MMDModelProps {
   onActiveModelChange: (modelId: string) => void;
   onDraggingChange: (dragging: boolean) => void;
   onHoveredModelChange: (modelId: string | null) => void;
+  interactionEnabled: boolean;
 }
 
 const MODEL_GAP = 2;
@@ -33,6 +34,7 @@ export default function MMDModel({
   onActiveModelChange,
   onDraggingChange,
   onHoveredModelChange,
+  interactionEnabled,
 }: MMDModelProps) {
   const { scene } = useThree();
   const dragStateRef = useRef<DragState | null>(null);
@@ -205,6 +207,10 @@ export default function MMDModel({
   );
 
   const beginDrag = (event: ThreeEvent<PointerEvent>, model: LoadedModel) => {
+    if (!interactionEnabled) {
+      return;
+    }
+
     if (!event.nativeEvent.shiftKey) {
       return;
     }
@@ -277,16 +283,23 @@ export default function MMDModel({
           key={model.id}
           object={model.object}
           onClick={(event) => {
+            if (!interactionEnabled) {
+              return;
+            }
             event.stopPropagation();
             onActiveModelChange(model.id);
             showSelectionHighlight(model.id);
           }}
           onPointerDown={(event) => beginDrag(event, model)}
           onPointerOver={() => {
-            onHoveredModelChange(model.id);
+            if (interactionEnabled) {
+              onHoveredModelChange(model.id);
+            }
           }}
           onPointerMove={(event) => {
-            onHoveredModelChange(model.id);
+            if (interactionEnabled) {
+              onHoveredModelChange(model.id);
+            }
             updateDrag(event, model);
           }}
           onPointerUp={endDrag}

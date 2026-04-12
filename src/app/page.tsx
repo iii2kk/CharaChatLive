@@ -25,6 +25,7 @@ const MMDViewer = dynamic(() => import("@/components/MMDViewer"), {
 export default function Home() {
   const [viewerSettings, setViewerSettings] =
     useState<ViewerSettings>(defaultViewerSettings);
+  const [freeCameraEnabled, setFreeCameraEnabled] = useState(false);
   const {
     models,
     activeModel,
@@ -141,6 +142,8 @@ export default function Home() {
         modelName={activeModel?.name ?? null}
         modelKind={activeModel?.kind ?? null}
         animationLoaded={activeModel?.animationLoaded ?? false}
+        freeCameraEnabled={freeCameraEnabled}
+        onFreeCameraEnabledChange={setFreeCameraEnabled}
         viewerSettings={viewerSettings}
         onViewerSettingsChange={setViewerSettings}
       />
@@ -150,6 +153,7 @@ export default function Home() {
           activeModel={activeModel}
           activeModelId={activeModelId}
           onActiveModelChange={setActiveModelId}
+          freeCameraEnabled={freeCameraEnabled}
           viewerSettings={viewerSettings}
         />
       </div>

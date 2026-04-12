@@ -12,6 +12,7 @@ interface MMDViewerProps {
   activeModel: LoadedModel | null;
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
+  freeCameraEnabled: boolean;
   viewerSettings: ViewerSettings;
 }
 
@@ -75,6 +76,7 @@ export default function MMDViewer({
   activeModel,
   activeModelId,
   onActiveModelChange,
+  freeCameraEnabled,
   viewerSettings,
 }: MMDViewerProps) {
   return (
@@ -90,6 +92,7 @@ export default function MMDViewer({
           activeModel={activeModel}
           activeModelId={activeModelId}
           onActiveModelChange={onActiveModelChange}
+          freeCameraEnabled={freeCameraEnabled}
           viewerSettings={viewerSettings}
         />
       </Suspense>
