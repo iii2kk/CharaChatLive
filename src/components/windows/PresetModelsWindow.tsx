@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import ScrollArea from "@/components/ScrollArea";
 import type { ModelEntry, ModelFile } from "@/types/models";
 
 interface PresetModelsWindowProps {
@@ -31,7 +32,7 @@ export default function PresetModelsWindow({
   if (presetModels.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-1">
+    <ScrollArea className="flex max-h-[56vh] flex-col gap-1 overflow-y-auto">
       {presetModels.map((entry) => (
         <div key={entry.folder}>
           {entry.files.length === 1 ? (
@@ -75,6 +76,6 @@ export default function PresetModelsWindow({
           )}
         </div>
       ))}
-    </div>
+    </ScrollArea>
   );
 }

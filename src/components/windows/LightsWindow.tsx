@@ -1,5 +1,6 @@
 "use client";
 
+import ScrollArea from "@/components/ScrollArea";
 import {
   createDirectionalLight,
   type SceneLight,
@@ -21,7 +22,7 @@ export default function LightsWindow({
   const activeLight = lights.find((light) => light.id === activeLightId) ?? null;
 
   return (
-    <div>
+    <div className="flex flex-col">
       {/* Placed Lights */}
       <div className="flex items-center justify-between mb-2">
         <p className="text-sm text-gray-400">配置済みライト</p>
@@ -41,7 +42,7 @@ export default function LightsWindow({
       >
         方向ライトを追加
       </button>
-      <div className="mt-2 flex flex-col gap-2">
+      <ScrollArea className="mt-2 flex max-h-[28vh] flex-col gap-2 overflow-y-auto">
         {lights.map((light) => {
           const isActive = light.id === activeLightId;
 
@@ -92,7 +93,7 @@ export default function LightsWindow({
             </div>
           );
         })}
-      </div>
+      </ScrollArea>
 
       {/* Light Settings */}
       {activeLight && (

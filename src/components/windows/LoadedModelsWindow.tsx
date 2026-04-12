@@ -1,5 +1,6 @@
 "use client";
 
+import ScrollArea from "@/components/ScrollArea";
 import type { LoadedModel } from "@/hooks/useModelLoader";
 
 interface LoadedModelsWindowProps {
@@ -47,7 +48,7 @@ export default function LoadedModelsWindow({
           </p>
         </div>
       )}
-      <div className="flex flex-col gap-2">
+      <ScrollArea className="flex max-h-[42vh] flex-col gap-2 overflow-y-auto">
         {loadedModels.map((loadedModel) => {
           const isActive = loadedModel.id === activeModelId;
 
@@ -89,7 +90,7 @@ export default function LoadedModelsWindow({
             </div>
           );
         })}
-      </div>
+      </ScrollArea>
     </div>
   );
 }

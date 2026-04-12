@@ -1,0 +1,28 @@
+.scrollRegion {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.82) rgba(255, 255, 255, 0.07);
+}
+
+.hasOverflow {
+  padding-right: 6px;
+}
+
+.scrollRegion::-webkit-scrollbar {
+  width: 14px;
+}
+
+.scrollRegion::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 9999px;
+}
+
+.scrollRegion::-webkit-scrollbar-thumb {
+  background-color: rgba(148, 163, 184, 0.82);
+  border: 3px solid rgba(15, 23, 42, 0.78);
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+
+.scrollRegion::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(226, 232, 240, 0.9);
+}

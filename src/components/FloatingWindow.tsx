@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef, type ReactNode } from "react";
+import ScrollArea from "@/components/ScrollArea";
 
 interface FloatingWindowProps {
   title: string;
@@ -138,9 +139,9 @@ export default function FloatingWindow({
       </div>
       {/* Content */}
       {!minimized && (
-        <div className="p-3 overflow-y-auto" style={{ maxHeight: "70vh" }}>
+        <ScrollArea className="p-3 overflow-y-auto" style={{ maxHeight: "70vh" }}>
           {children}
-        </div>
+        </ScrollArea>
       )}
     </div>
   );
