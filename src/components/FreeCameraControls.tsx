@@ -6,6 +6,7 @@ import * as THREE from "three";
 
 interface FreeCameraControlsProps {
   enabled: boolean;
+  getInitialLookTarget: () => THREE.Vector3 | null;
 }
 
 const LOOK_SENSITIVITY = 0.005;
@@ -25,6 +26,7 @@ type KeyState = {
 
 export default function FreeCameraControls({
   enabled,
+  getInitialLookTarget,
 }: FreeCameraControlsProps) {
   const { camera, gl } = useThree();
   const keyStateRef = useRef<KeyState>({
@@ -50,14 +52,38 @@ export default function FreeCameraControls({
       return;
     }
 
-    const direction = new THREE.Vector3();
-    camera.getWorldDirection(direction);
+    const initialLookTarget = getInitialLookTarget();
+    if (initialLookTarget) {
+      const lookMatrix = new THREE.Matrix4().lookAt(
+        camera.position,
+        initialLookTarget,
+        camera.up
+      );
+      const nextEuler = new THREE.Euler().setFromRotationMatrix(
+        lookMatrix,
+        "YXZ"
+      );
 
-    yawRef.current = Math.atan2(direction.x, direction.z);
-    pitchRef.current = Math.asin(
-      THREE.MathUtils.clamp(direction.y, -1, 1)
+      yawRef.current = nextEuler.y;
+      pitchRef.current = THREE.MathUtils.clamp(
+        nextEuler.x,
+        -MAX_PITCH,
+        MAX_PITCH
+      );
+      return;
+    }
+
+    const currentEuler = new THREE.Euler().setFromQuaternion(
+      camera.quaternion,
+      "YXZ"
     );
-  }, [camera, enabled]);
+    yawRef.current = currentEuler.y;
+    pitchRef.current = THREE.MathUtils.clamp(
+      currentEuler.x,
+      -MAX_PITCH,
+      MAX_PITCH
+    );
+  }, [camera, enabled, getInitialLookTarget]);
 
   useEffect(() => {
     if (!enabled) {

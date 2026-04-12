@@ -2,7 +2,7 @@
 
 import { OrbitControls, Grid } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { ViewerSettings } from "@/lib/viewer-settings";
@@ -37,6 +37,8 @@ export default function MMDScene({
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null);
   const previousModelCountRef = useRef(models.length);
   const previousActiveModelIdRef = useRef<string | null>(activeModelId);
+  const previousFreeCameraEnabledRef = useRef(freeCameraEnabled);
+  const freeCameraLookTargetRef = useRef<THREE.Vector3 | null>(null);
   const orbitEnabled =
     !freeCameraEnabled &&
     !isDraggingModel &&
@@ -79,6 +81,22 @@ export default function MMDScene({
       window.removeEventListener("blur", handleWindowBlur);
     };
   }, []);
+
+  useEffect(() => {
+    if (freeCameraEnabled && !previousFreeCameraEnabledRef.current) {
+      const currentTarget = controlsRef.current?.target.clone();
+      if (currentTarget) {
+        freeCameraLookTargetRef.current = currentTarget;
+      }
+    }
+
+    previousFreeCameraEnabledRef.current = freeCameraEnabled;
+  }, [freeCameraEnabled]);
+
+  const getInitialFreeCameraLookTarget = useCallback(
+    () => freeCameraLookTargetRef.current,
+    []
+  );
 
   useEffect(() => {
     if (
@@ -198,7 +216,10 @@ export default function MMDScene({
         interactionEnabled={!freeCameraEnabled}
       />
 
-      <FreeCameraControls enabled={freeCameraEnabled} />
+      <FreeCameraControls
+        enabled={freeCameraEnabled}
+        getInitialLookTarget={getInitialFreeCameraLookTarget}
+      />
 
       <OrbitControls
         ref={controlsRef}
