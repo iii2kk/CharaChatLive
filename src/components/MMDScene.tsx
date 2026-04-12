@@ -2,7 +2,7 @@
 
 import { OrbitControls, Grid } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { ViewerSettings } from "@/lib/viewer-settings";
@@ -12,12 +12,16 @@ import MMDModel from "./MMDModel";
 interface MMDSceneProps {
   models: LoadedModel[];
   activeModel: LoadedModel | null;
+  activeModelId: string | null;
+  onActiveModelChange: (modelId: string) => void;
   viewerSettings: ViewerSettings;
 }
 
 export default function MMDScene({
   models,
   activeModel,
+  activeModelId,
+  onActiveModelChange,
   viewerSettings,
 }: MMDSceneProps) {
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 10, 0), []);
@@ -25,6 +29,7 @@ export default function MMDScene({
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const directionalLightRef = useRef<THREE.DirectionalLight>(null);
   const directionalLightTarget = useMemo(() => new THREE.Object3D(), []);
+  const [orbitEnabled, setOrbitEnabled] = useState(true);
 
   useEffect(() => {
     directionalLightTarget.position.set(0, 10, 0);
@@ -118,10 +123,16 @@ export default function MMDScene({
         infiniteGrid
       />
 
-      <MMDModel models={models} />
+      <MMDModel
+        models={models}
+        activeModelId={activeModelId}
+        onActiveModelChange={onActiveModelChange}
+        onDraggingChange={(dragging) => setOrbitEnabled(!dragging)}
+      />
 
       <OrbitControls
         ref={controlsRef}
+        enabled={orbitEnabled}
         target={[0, 10, 0]}
         minDistance={1}
         maxDistance={200}

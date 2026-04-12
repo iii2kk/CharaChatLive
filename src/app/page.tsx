@@ -148,6 +148,8 @@ export default function Home() {
         <MMDViewer
           models={models}
           activeModel={activeModel}
+          activeModelId={activeModelId}
+          onActiveModelChange={setActiveModelId}
           viewerSettings={viewerSettings}
         />
       </div>

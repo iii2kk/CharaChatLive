@@ -10,6 +10,8 @@ import MMDScene from "./MMDScene";
 interface MMDViewerProps {
   models: LoadedModel[];
   activeModel: LoadedModel | null;
+  activeModelId: string | null;
+  onActiveModelChange: (modelId: string) => void;
   viewerSettings: ViewerSettings;
 }
 
@@ -71,6 +73,8 @@ function MaterialTuner({
 export default function MMDViewer({
   models,
   activeModel,
+  activeModelId,
+  onActiveModelChange,
   viewerSettings,
 }: MMDViewerProps) {
   return (
@@ -84,6 +88,8 @@ export default function MMDViewer({
         <MMDScene
           models={models}
           activeModel={activeModel}
+          activeModelId={activeModelId}
+          onActiveModelChange={onActiveModelChange}
           viewerSettings={viewerSettings}
         />
       </Suspense>

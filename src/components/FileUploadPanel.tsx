@@ -491,6 +491,13 @@ export default function FileUploadPanel({
           ))}
         </div>
       </div>
+
+      <div className="border-t border-gray-700 pt-4 text-xs text-gray-500">
+        <p>3Dビュー操作</p>
+        <p className="mt-1">クリック: モデル選択</p>
+        <p className="mt-1">ドラッグ: 視点移動</p>
+        <p className="mt-1">Shift + ドラッグ: 選択モデルを移動</p>
+      </div>
     </div>
   );
 }
