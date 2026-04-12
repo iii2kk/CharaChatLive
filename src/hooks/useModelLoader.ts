@@ -163,6 +163,12 @@ function getPhysicsController(
   return (helper as HelperWithInternals).objects?.get(mesh)?.physics ?? null;
 }
 
+/**
+ * VRM は 1 unit = 1m、MMD は 1 unit ≈ 0.08m (8cm)。
+ * 両方のモデルをシーンに並べたとき同じ縮尺にするための変換係数。
+ */
+const VRM_TO_MMD_SCALE = 12.5;
+
 function createVRMLoader(manager?: THREE.LoadingManager) {
   const loader = new GLTFLoader(manager);
   loader.register((parser) => new VRMLoaderPlugin(parser));
@@ -423,6 +429,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
             }
 
             VRMUtils.rotateVRM0(vrm);
+            vrm.scene.scale.multiplyScalar(VRM_TO_MMD_SCALE);
 
             vrm.scene.traverse((child) => {
               if (child instanceof THREE.Mesh || child instanceof THREE.SkinnedMesh) {
