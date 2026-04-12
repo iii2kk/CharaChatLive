@@ -1,4 +1,8 @@
 export interface ViewerSettings {
+  ambientLightIntensity: number;
+  hemisphereLightIntensity: number;
+  hemisphereLightSkyColor: string;
+  hemisphereLightGroundColor: string;
   diffuseMultiplier: number;
   emissiveMultiplier: number;
   physicsEnabled: boolean;
@@ -8,6 +12,10 @@ export interface ViewerSettings {
 }
 
 export const defaultViewerSettings: ViewerSettings = {
+  ambientLightIntensity: 0.35,
+  hemisphereLightIntensity: 0.2,
+  hemisphereLightSkyColor: "#ffffff",
+  hemisphereLightGroundColor: "#444444",
   diffuseMultiplier: 1,
   emissiveMultiplier: 0.0,
   physicsEnabled: true,

@@ -106,6 +106,7 @@ export default function MMDViewer({
           onActiveLightChange={onActiveLightChange}
           onLightsChange={onLightsChange}
           freeCameraEnabled={freeCameraEnabled}
+          viewerSettings={viewerSettings}
         />
       </Suspense>
     </Canvas>

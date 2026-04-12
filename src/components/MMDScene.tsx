@@ -7,6 +7,7 @@ import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { LoadedModel } from "@/hooks/useModelLoader";
 import type { SceneLight } from "@/lib/scene-lights";
+import type { ViewerSettings } from "@/lib/viewer-settings";
 import FreeCameraControls from "./FreeCameraControls";
 import MMDModel from "./MMDModel";
 import SceneLights from "./SceneLights";
@@ -21,6 +22,7 @@ interface MMDSceneProps {
   onActiveLightChange: (lightId: string | null) => void;
   onLightsChange: React.Dispatch<React.SetStateAction<SceneLight[]>>;
   freeCameraEnabled: boolean;
+  viewerSettings: ViewerSettings;
 }
 
 export default function MMDScene({
@@ -33,6 +35,7 @@ export default function MMDScene({
   onActiveLightChange,
   onLightsChange,
   freeCameraEnabled,
+  viewerSettings,
 }: MMDSceneProps) {
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 10, 0), []);
   const { camera, invalidate } = useThree();
@@ -179,6 +182,15 @@ export default function MMDScene({
 
   return (
     <>
+      <ambientLight intensity={viewerSettings.ambientLightIntensity} />
+      <hemisphereLight
+        args={[
+          viewerSettings.hemisphereLightSkyColor,
+          viewerSettings.hemisphereLightGroundColor,
+          viewerSettings.hemisphereLightIntensity,
+        ]}
+      />
+
       <Grid
         args={[50, 50]}
         position={[0, 0, 0]}

@@ -152,6 +152,20 @@ export default function FileUploadPanel({
     disabled?: boolean;
   }> = [
     {
+      key: "ambientLightIntensity",
+      label: "Ambient Light",
+      min: 0,
+      max: 2.0,
+      step: 0.05,
+    },
+    {
+      key: "hemisphereLightIntensity",
+      label: "Hemisphere Light",
+      min: 0,
+      max: 2.0,
+      step: 0.05,
+    },
+    {
       key: "diffuseMultiplier",
       label: "材質 Diffuse",
       min: 0.4,
@@ -447,6 +461,42 @@ export default function FileUploadPanel({
           </p>
         </div>
       )}
+
+      <div className="border-t border-gray-700 pt-4">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm text-gray-400">環境ライト</p>
+        </div>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-gray-300">Hemisphere Sky</span>
+            <input
+              type="color"
+              value={viewerSettings.hemisphereLightSkyColor}
+              onChange={(e) =>
+                onViewerSettingsChange((prev) => ({
+                  ...prev,
+                  hemisphereLightSkyColor: e.currentTarget.value,
+                }))
+              }
+              className="h-10 w-full rounded bg-gray-800"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-gray-300">Hemisphere Ground</span>
+            <input
+              type="color"
+              value={viewerSettings.hemisphereLightGroundColor}
+              onChange={(e) =>
+                onViewerSettingsChange((prev) => ({
+                  ...prev,
+                  hemisphereLightGroundColor: e.currentTarget.value,
+                }))
+              }
+              className="h-10 w-full rounded bg-gray-800"
+            />
+          </label>
+        </div>
+      </div>
 
       {/* Model Folder Upload */}
       <div
