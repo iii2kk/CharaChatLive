@@ -167,7 +167,7 @@ function getPhysicsController(
  * VRM は 1 unit = 1m、MMD は 1 unit ≈ 0.08m (8cm)。
  * 両方のモデルをシーンに並べたとき同じ縮尺にするための変換係数。
  */
-const VRM_TO_MMD_SCALE = 12.5;
+const VRM_TO_MMD_SCALE = 12.7;
 
 function createVRMLoader(manager?: THREE.LoadingManager) {
   const loader = new GLTFLoader(manager);
@@ -430,6 +430,16 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
 
             VRMUtils.rotateVRM0(vrm);
             vrm.scene.scale.multiplyScalar(VRM_TO_MMD_SCALE);
+
+            // スプリングボーンの stiffness / gravityPower はワールド空間の
+            // 単位ベクトルに掛けられるため、スケール変更分を補正しないと
+            // 物理演算がスローモーションになる
+            if (vrm.springBoneManager) {
+              for (const joint of vrm.springBoneManager.joints) {
+                joint.settings.stiffness *= VRM_TO_MMD_SCALE;
+                joint.settings.gravityPower *= VRM_TO_MMD_SCALE;
+              }
+            }
 
             vrm.scene.traverse((child) => {
               if (child instanceof THREE.Mesh || child instanceof THREE.SkinnedMesh) {
