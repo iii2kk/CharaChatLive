@@ -24,7 +24,9 @@ type DragState = {
   modelId: string;
   pointerId: number;
   plane: THREE.Plane;
-  grabOffset: THREE.Vector3;
+  startHitPoint: THREE.Vector3;
+  startPosition: THREE.Vector3;
+  pointerAnchorOffset: THREE.Vector2;
   y: number;
 };
 
@@ -36,14 +38,60 @@ export default function MMDModel({
   onHoveredModelChange,
   interactionEnabled,
 }: MMDModelProps) {
-  const { scene } = useThree();
+  const { camera, gl, scene } = useThree();
   const dragStateRef = useRef<DragState | null>(null);
   const selectionRingRef = useRef<THREE.Mesh | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const planeHitPoint = useMemo(() => new THREE.Vector3(), []);
+  const footAnchor = useMemo(() => new THREE.Vector3(), []);
+  const projectedAnchor = useMemo(() => new THREE.Vector3(), []);
+  const pointerNdc = useMemo(() => new THREE.Vector2(), []);
+  const pointerAnchorOffset = useMemo(() => new THREE.Vector2(), []);
+  const dragRaycaster = useMemo(() => new THREE.Raycaster(), []);
   const [highlightedModelId, setHighlightedModelId] = useState<string | null>(
     activeModelId
   );
+
+  const intersectDragPlaneFromClientPoint = (
+    clientX: number,
+    clientY: number,
+    plane: THREE.Plane
+  ) => {
+    const rect = gl.domElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return false;
+    }
+
+    pointerNdc.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1
+    );
+    dragRaycaster.setFromCamera(pointerNdc, camera);
+    return dragRaycaster.ray.intersectPlane(plane, planeHitPoint) !== null;
+  };
+
+  const getFootAnchorScreenPoint = (model: LoadedModel) => {
+    model.object.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(model.object);
+    if (box.isEmpty()) {
+      return null;
+    }
+
+    footAnchor.set(
+      (box.min.x + box.max.x) / 2,
+      box.min.y,
+      (box.min.z + box.max.z) / 2
+    );
+
+    const rect = gl.domElement.getBoundingClientRect();
+    projectedAnchor.copy(footAnchor).project(camera);
+
+    return {
+      x: ((projectedAnchor.x + 1) * 0.5) * rect.width + rect.left,
+      y: ((1 - projectedAnchor.y) * 0.5) * rect.height + rect.top,
+    };
+  };
 
   const showSelectionHighlight = (modelId: string | null) => {
     setHighlightedModelId(modelId);
@@ -216,9 +264,25 @@ export default function MMDModel({
     }
 
     const planeY = model.object.position.y;
-    const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -planeY);
+    const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
-    if (!event.ray.intersectPlane(dragPlane, planeHitPoint)) {
+    const footAnchorScreenPoint = getFootAnchorScreenPoint(model);
+    if (!footAnchorScreenPoint) {
+      return;
+    }
+
+    pointerAnchorOffset.set(
+      event.nativeEvent.clientX - footAnchorScreenPoint.x,
+      event.nativeEvent.clientY - footAnchorScreenPoint.y
+    );
+
+    if (
+      !intersectDragPlaneFromClientPoint(
+        event.nativeEvent.clientX - pointerAnchorOffset.x,
+        event.nativeEvent.clientY - pointerAnchorOffset.y,
+        dragPlane
+      )
+    ) {
       return;
     }
 
@@ -232,7 +296,9 @@ export default function MMDModel({
       modelId: model.id,
       pointerId: event.pointerId,
       plane: dragPlane,
-      grabOffset: model.object.position.clone().sub(planeHitPoint),
+      startHitPoint: planeHitPoint.clone(),
+      startPosition: model.object.position.clone(),
+      pointerAnchorOffset: pointerAnchorOffset.clone(),
       y: planeY,
     };
   };
@@ -243,14 +309,24 @@ export default function MMDModel({
       return;
     }
 
-    if (!event.ray.intersectPlane(dragState.plane, planeHitPoint)) {
+    if (
+      !intersectDragPlaneFromClientPoint(
+        event.nativeEvent.clientX - dragState.pointerAnchorOffset.x,
+        event.nativeEvent.clientY - dragState.pointerAnchorOffset.y,
+        dragState.plane
+      )
+    ) {
       return;
     }
 
     event.stopPropagation();
 
-    const nextPosition = planeHitPoint.clone().add(dragState.grabOffset);
-    model.object.position.set(nextPosition.x, dragState.y, nextPosition.z);
+    const delta = planeHitPoint.clone().sub(dragState.startHitPoint);
+    model.object.position.set(
+      dragState.startPosition.x + delta.x,
+      dragState.y,
+      dragState.startPosition.z + delta.z
+    );
 
     const basePosition = basePositions.get(model.object) ?? new THREE.Vector3();
     const layoutX = layoutOffsets.get(model.object) ?? 0;
