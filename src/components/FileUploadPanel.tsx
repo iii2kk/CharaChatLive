@@ -152,20 +152,6 @@ export default function FileUploadPanel({
     disabled?: boolean;
   }> = [
     {
-      key: "ambientLightIntensity",
-      label: "Ambient Light",
-      min: 0,
-      max: 2.0,
-      step: 0.05,
-    },
-    {
-      key: "hemisphereLightIntensity",
-      label: "Hemisphere Light",
-      min: 0,
-      max: 2.0,
-      step: 0.05,
-    },
-    {
       key: "diffuseMultiplier",
       label: "材質 Diffuse",
       min: 0.4,
@@ -344,17 +330,14 @@ export default function FileUploadPanel({
             return (
               <div
                 key={light.id}
+                onClick={() => onActiveLightChange(light.id)}
                 className={`rounded border px-3 py-2 transition-colors ${
                   isActive
                     ? "border-amber-400 bg-amber-950/30"
                     : "border-gray-700 bg-gray-800/40"
-                }`}
+                } cursor-pointer`}
               >
-                <button
-                  type="button"
-                  onClick={() => onActiveLightChange(light.id)}
-                  className="w-full text-left"
-                >
+                <div className="w-full text-left">
                   <div className="flex items-center gap-2">
                     <span
                       className="h-3 w-3 rounded-full border border-white/20"
@@ -370,10 +353,11 @@ export default function FileUploadPanel({
                   <div className="mt-1 text-xs text-gray-500">
                     intensity {light.intensity.toFixed(2)}
                   </div>
-                </button>
+                </div>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     const remainingLights = lights.filter(
                       (currentLight) => currentLight.id !== light.id
                     );
@@ -456,6 +440,24 @@ export default function FileUploadPanel({
               className="h-4 w-4 accent-amber-400"
             />
           </label>
+          <label className="mt-3 flex items-center justify-between rounded bg-gray-800/50 px-3 py-2 text-sm">
+            <span className="text-gray-300">Object Visible</span>
+            <input
+              type="checkbox"
+              checked={activeLight.objectVisible}
+              onChange={(e) => {
+                const objectVisible = e.currentTarget.checked;
+                onLightsChange((prev) =>
+                  prev.map((light) =>
+                    light.id === activeLight.id
+                      ? { ...light, objectVisible }
+                      : light
+                  )
+                );
+              }}
+              className="h-4 w-4 accent-amber-400"
+            />
+          </label>
           <p className="mt-3 text-xs text-gray-500">
             通常カメラモードで、黄色の球をドラッグすると位置、青い球をドラッグすると向きが変わります
           </p>
@@ -468,16 +470,61 @@ export default function FileUploadPanel({
         </div>
         <div className="flex flex-col gap-3">
           <label className="flex flex-col gap-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-300">Ambient Intensity</span>
+              <span className="text-gray-500">
+                {viewerSettings.ambientLightIntensity.toFixed(2)}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={2}
+              step={0.05}
+              value={viewerSettings.ambientLightIntensity}
+              onChange={(e) =>
+                handleViewerSettingChange(
+                  "ambientLightIntensity",
+                  Number(e.currentTarget.value)
+                )
+              }
+              className="accent-blue-400"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-300">Hemisphere Intensity</span>
+              <span className="text-gray-500">
+                {viewerSettings.hemisphereLightIntensity.toFixed(2)}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={2}
+              step={0.05}
+              value={viewerSettings.hemisphereLightIntensity}
+              onChange={(e) =>
+                handleViewerSettingChange(
+                  "hemisphereLightIntensity",
+                  Number(e.currentTarget.value)
+                )
+              }
+              className="accent-blue-400"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
             <span className="text-xs text-gray-300">Hemisphere Sky</span>
             <input
               type="color"
               value={viewerSettings.hemisphereLightSkyColor}
-              onChange={(e) =>
+              onChange={(e) => {
+                const hemisphereLightSkyColor = e.currentTarget.value;
                 onViewerSettingsChange((prev) => ({
                   ...prev,
-                  hemisphereLightSkyColor: e.currentTarget.value,
-                }))
-              }
+                  hemisphereLightSkyColor,
+                }));
+              }}
               className="h-10 w-full rounded bg-gray-800"
             />
           </label>
@@ -486,12 +533,13 @@ export default function FileUploadPanel({
             <input
               type="color"
               value={viewerSettings.hemisphereLightGroundColor}
-              onChange={(e) =>
+              onChange={(e) => {
+                const hemisphereLightGroundColor = e.currentTarget.value;
                 onViewerSettingsChange((prev) => ({
                   ...prev,
-                  hemisphereLightGroundColor: e.currentTarget.value,
-                }))
-              }
+                  hemisphereLightGroundColor,
+                }));
+              }}
               className="h-10 w-full rounded bg-gray-800"
             />
           </label>

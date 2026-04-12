@@ -7,6 +7,7 @@ export interface SceneDirectionalLight {
   position: [number, number, number];
   target: [number, number, number];
   visible: boolean;
+  objectVisible: boolean;
 }
 
 export type SceneLight = SceneDirectionalLight;
@@ -27,5 +28,6 @@ export function createDirectionalLight(
     position: partial?.position ?? [5, 20, 10],
     target: partial?.target ?? [0, 10, 0],
     visible: partial?.visible ?? true,
+    objectVisible: partial?.objectVisible ?? true,
   };
 }

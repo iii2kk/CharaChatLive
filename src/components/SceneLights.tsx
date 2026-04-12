@@ -178,69 +178,73 @@ export default function SceneLights({
           <group key={light.id}>
             <DirectionalLightInstance light={light} />
 
-            <Line
-              points={[bodyPosition, targetPosition]}
-              color={isActive ? "#fbbf24" : "#94a3b8"}
-              lineWidth={1.5}
-              transparent
-              opacity={0.8}
-            />
+            {light.objectVisible && (
+              <>
+                <Line
+                  points={[bodyPosition, targetPosition]}
+                  color={isActive ? "#fbbf24" : "#94a3b8"}
+                  lineWidth={1.5}
+                  transparent
+                  opacity={0.8}
+                />
 
-            <mesh
-              position={bodyPosition}
-              onClick={(event) => {
-                if (!interactionEnabled) {
-                  return;
-                }
-                event.stopPropagation();
-                onActiveLightChange(light.id);
-              }}
-              onPointerDown={(event) => beginDrag(event, light, "position")}
-              onPointerMove={updateDrag}
-              onPointerUp={endDrag}
-              onPointerCancel={endDrag}
-              onPointerOver={() => {
-                if (interactionEnabled) {
-                  onHoveredHandleChange(true);
-                }
-              }}
-              onPointerOut={() => {
-                if (!dragStateRef.current) {
-                  onHoveredHandleChange(false);
-                }
-              }}
-            >
-              <sphereGeometry args={[isActive ? 0.6 : 0.45, 16, 16]} />
-              <meshBasicMaterial color={isActive ? "#f59e0b" : "#fde68a"} />
-            </mesh>
+                <mesh
+                  position={bodyPosition}
+                  onClick={(event) => {
+                    if (!interactionEnabled) {
+                      return;
+                    }
+                    event.stopPropagation();
+                    onActiveLightChange(light.id);
+                  }}
+                  onPointerDown={(event) => beginDrag(event, light, "position")}
+                  onPointerMove={updateDrag}
+                  onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
+                  onPointerOver={() => {
+                    if (interactionEnabled) {
+                      onHoveredHandleChange(true);
+                    }
+                  }}
+                  onPointerOut={() => {
+                    if (!dragStateRef.current) {
+                      onHoveredHandleChange(false);
+                    }
+                  }}
+                >
+                  <sphereGeometry args={[isActive ? 0.6 : 0.45, 16, 16]} />
+                  <meshBasicMaterial color={isActive ? "#f59e0b" : "#fde68a"} />
+                </mesh>
 
-            <mesh
-              position={targetPosition}
-              onClick={(event) => {
-                if (!interactionEnabled) {
-                  return;
-                }
-                event.stopPropagation();
-                onActiveLightChange(light.id);
-              }}
-              onPointerDown={(event) => beginDrag(event, light, "target")}
-              onPointerMove={updateDrag}
-              onPointerUp={endDrag}
-              onPointerCancel={endDrag}
-              onPointerOver={() => {
-                if (interactionEnabled) {
-                  onHoveredHandleChange(true);
-                }
-              }}
-              onPointerOut={() => {
-                if (!dragStateRef.current) {
-                  onHoveredHandleChange(false);
-                }
-              }}
-            >
-              <sphereGeometry args={[isActive ? 0.38 : 0.3, 16, 16]} />
-              <meshBasicMaterial color={isActive ? "#22d3ee" : "#67e8f9"} />
-            </mesh>
+                <mesh
+                  position={targetPosition}
+                  onClick={(event) => {
+                    if (!interactionEnabled) {
+                      return;
+                    }
+                    event.stopPropagation();
+                    onActiveLightChange(light.id);
+                  }}
+                  onPointerDown={(event) => beginDrag(event, light, "target")}
+                  onPointerMove={updateDrag}
+                  onPointerUp={endDrag}
+                  onPointerCancel={endDrag}
+                  onPointerOver={() => {
+                    if (interactionEnabled) {
+                      onHoveredHandleChange(true);
+                    }
+                  }}
+                  onPointerOut={() => {
+                    if (!dragStateRef.current) {
+                      onHoveredHandleChange(false);
+                    }
+                  }}
+                >
+                  <sphereGeometry args={[isActive ? 0.38 : 0.3, 16, 16]} />
+                  <meshBasicMaterial color={isActive ? "#22d3ee" : "#67e8f9"} />
+                </mesh>
+              </>
+            )}
           </group>
         );
       })}
