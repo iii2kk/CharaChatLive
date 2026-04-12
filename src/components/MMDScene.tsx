@@ -29,7 +29,13 @@ export default function MMDScene({
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const directionalLightRef = useRef<THREE.DirectionalLight>(null);
   const directionalLightTarget = useMemo(() => new THREE.Object3D(), []);
-  const [orbitEnabled, setOrbitEnabled] = useState(true);
+  const [isDraggingModel, setIsDraggingModel] = useState(false);
+  const [isShiftPressed, setIsShiftPressed] = useState(false);
+  const [hoveredModelId, setHoveredModelId] = useState<string | null>(null);
+  const previousModelCountRef = useRef(models.length);
+  const previousActiveModelIdRef = useRef<string | null>(activeModelId);
+  const orbitEnabled =
+    !isDraggingModel && !(isShiftPressed && hoveredModelId !== null);
 
   useEffect(() => {
     directionalLightTarget.position.set(0, 10, 0);
@@ -40,7 +46,50 @@ export default function MMDScene({
   }, [directionalLightTarget]);
 
   useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.shiftKey) {
+        setIsShiftPressed(true);
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (!event.shiftKey) {
+        setIsShiftPressed(false);
+      }
+    };
+
+    const handleWindowBlur = () => {
+      setIsShiftPressed(false);
+      setIsDraggingModel(false);
+      setHoveredModelId(null);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleWindowBlur);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!activeModel || !(camera instanceof THREE.PerspectiveCamera)) {
+      previousModelCountRef.current = models.length;
+      previousActiveModelIdRef.current = activeModelId;
+      return;
+    }
+
+    const shouldRefocus =
+      models.length !== previousModelCountRef.current ||
+      previousActiveModelIdRef.current === null;
+
+    previousModelCountRef.current = models.length;
+    previousActiveModelIdRef.current = activeModelId;
+
+    if (!shouldRefocus) {
       return;
     }
 
@@ -88,7 +137,7 @@ export default function MMDScene({
     controlsRef.current?.target.copy(nextTarget);
     controlsRef.current?.update();
     invalidate();
-  }, [activeModel, camera, defaultTarget, invalidate]);
+  }, [activeModel, activeModelId, camera, defaultTarget, invalidate, models.length]);
 
   return (
     <>
@@ -127,7 +176,8 @@ export default function MMDScene({
         models={models}
         activeModelId={activeModelId}
         onActiveModelChange={onActiveModelChange}
-        onDraggingChange={(dragging) => setOrbitEnabled(!dragging)}
+        onDraggingChange={setIsDraggingModel}
+        onHoveredModelChange={setHoveredModelId}
       />
 
       <OrbitControls

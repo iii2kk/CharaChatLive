@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { LoadedModel } from "@/hooks/useModelLoader";
@@ -10,9 +10,11 @@ interface MMDModelProps {
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
   onDraggingChange: (dragging: boolean) => void;
+  onHoveredModelChange: (modelId: string | null) => void;
 }
 
 const MODEL_GAP = 2;
+const SELECTION_HIGHLIGHT_DURATION_MS = 2000;
 const basePositions = new WeakMap<THREE.Object3D, THREE.Vector3>();
 const layoutOffsets = new WeakMap<THREE.Object3D, number>();
 const manualOffsets = new WeakMap<THREE.Object3D, THREE.Vector3>();
@@ -30,11 +32,20 @@ export default function MMDModel({
   activeModelId,
   onActiveModelChange,
   onDraggingChange,
+  onHoveredModelChange,
 }: MMDModelProps) {
   const { scene } = useThree();
   const dragStateRef = useRef<DragState | null>(null);
-  const selectionHelperRef = useRef<THREE.BoxHelper | null>(null);
+  const selectionRingRef = useRef<THREE.Mesh | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const planeHitPoint = useMemo(() => new THREE.Vector3(), []);
+  const [highlightedModelId, setHighlightedModelId] = useState<string | null>(
+    activeModelId
+  );
+
+  const showSelectionHighlight = (modelId: string | null) => {
+    setHighlightedModelId(modelId);
+  };
 
   useFrame((_, delta) => {
     for (const model of models) {
@@ -43,7 +54,29 @@ export default function MMDModel({
       model.vrm?.update(delta);
     }
 
-    selectionHelperRef.current?.update();
+    const highlightedModel =
+      models.find((model) => model.id === highlightedModelId) ?? null;
+    const selectionRing = selectionRingRef.current;
+
+    if (!highlightedModel || !selectionRing) {
+      return;
+    }
+
+    highlightedModel.object.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(highlightedModel.object);
+    if (box.isEmpty()) {
+      selectionRing.visible = false;
+      return;
+    }
+
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const radius = Math.max(size.x, size.z) * 0.35 + 0.8;
+
+    selectionRing.visible = true;
+    selectionRing.position.set(center.x, box.min.y + 0.05, center.z);
+    selectionRing.scale.setScalar(radius);
   });
 
   useEffect(() => {
@@ -92,33 +125,83 @@ export default function MMDModel({
   }, [models]);
 
   useEffect(() => {
-    const activeModel =
-      models.find((model) => model.id === activeModelId) ?? null;
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
 
-    selectionHelperRef.current?.removeFromParent();
-    selectionHelperRef.current = null;
+    if (!highlightedModelId) {
+      highlightTimeoutRef.current = null;
+      return;
+    }
+
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedModelId((current) =>
+        current === highlightedModelId ? null : current
+      );
+      highlightTimeoutRef.current = null;
+    }, SELECTION_HIGHLIGHT_DURATION_MS);
+
+    return () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
+      }
+    };
+  }, [highlightedModelId]);
+
+  useEffect(() => {
+    const activeModel =
+      models.find((model) => model.id === highlightedModelId) ?? null;
+
+    selectionRingRef.current?.removeFromParent();
+    selectionRingRef.current?.geometry.dispose();
+    (
+      selectionRingRef.current?.material instanceof THREE.Material
+        ? selectionRingRef.current.material
+        : null
+    )?.dispose();
+    selectionRingRef.current = null;
 
     if (!activeModel) {
       return;
     }
 
-    const helper = new THREE.BoxHelper(activeModel.object, 0x7dd3fc);
-    selectionHelperRef.current = helper;
-    scene.add(helper);
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.9, 1, 64),
+      new THREE.MeshBasicMaterial({
+        color: 0x7dd3fc,
+        transparent: true,
+        opacity: 0.9,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.renderOrder = 10;
+    selectionRingRef.current = ring;
+    scene.add(ring);
 
     return () => {
-      helper.removeFromParent();
-      if (selectionHelperRef.current === helper) {
-        selectionHelperRef.current = null;
+      ring.removeFromParent();
+      ring.geometry.dispose();
+      if (ring.material instanceof THREE.Material) {
+        ring.material.dispose();
+      }
+      if (selectionRingRef.current === ring) {
+        selectionRingRef.current = null;
       }
     };
-  }, [activeModelId, models, scene]);
+  }, [highlightedModelId, models, scene]);
 
   useEffect(
     () => () => {
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
       onDraggingChange(false);
+      onHoveredModelChange(null);
     },
-    [onDraggingChange]
+    [onDraggingChange, onHoveredModelChange]
   );
 
   const beginDrag = (event: ThreeEvent<PointerEvent>, model: LoadedModel) => {
@@ -136,6 +219,7 @@ export default function MMDModel({
     event.stopPropagation();
     event.target.setPointerCapture(event.pointerId);
     onActiveModelChange(model.id);
+    showSelectionHighlight(model.id);
     onDraggingChange(true);
 
     dragStateRef.current = {
@@ -195,14 +279,27 @@ export default function MMDModel({
           onClick={(event) => {
             event.stopPropagation();
             onActiveModelChange(model.id);
+            showSelectionHighlight(model.id);
           }}
           onPointerDown={(event) => beginDrag(event, model)}
-          onPointerMove={(event) => updateDrag(event, model)}
+          onPointerOver={() => {
+            onHoveredModelChange(model.id);
+          }}
+          onPointerMove={(event) => {
+            onHoveredModelChange(model.id);
+            updateDrag(event, model);
+          }}
           onPointerUp={endDrag}
           onPointerMissed={() => {
             onDraggingChange(false);
+            onHoveredModelChange(null);
           }}
           onPointerCancel={endDrag}
+          onPointerOut={() => {
+            if (dragStateRef.current?.modelId !== model.id) {
+              onHoveredModelChange(null);
+            }
+          }}
         />
       ))}
     </>
