@@ -252,12 +252,76 @@ export default function FileUploadPanel({
         <p className="text-sm text-gray-400 mb-2">ファイルから読み込み</p>
       </div>
 
+      {/* Model Folder Upload */}
+      <div
+        className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400 hover:bg-gray-800 transition-colors"
+        onClick={() => folderInputRef.current?.click()}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+      >
+        <input
+          ref={folderInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleFolderChange}
+          {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+        />
+        <div className="text-3xl mb-2">📁</div>
+        <p className="text-sm font-medium">
+          モデルフォルダを選択
+        </p>
+        <p className="text-xs text-gray-400 mt-1">
+          .pmx / .pmd / .vrm + 関連ファイルを含むフォルダ
+        </p>
+      </div>
+
+      {/* Animation Upload */}
+      <div
+        className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center cursor-pointer hover:border-green-400 hover:bg-gray-800 transition-colors"
+        onClick={() => animationInputRef.current?.click()}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+      >
+        <input
+          ref={animationInputRef}
+          type="file"
+          className="hidden"
+          accept=".vmd,.vrma"
+          multiple
+          onChange={handleAnimationChange}
+        />
+        <div className="text-3xl mb-2">🎬</div>
+        <p className="text-sm font-medium">
+          アニメーションファイルを選択
+        </p>
+        <p className="text-xs text-gray-400 mt-1">
+          .vmd / .vrma ファイル
+        </p>
+      </div>
+
       {loadedModels.length > 0 && (
         <div className="border-t border-gray-700 pt-4">
           <div className="flex items-center justify-between mb-2">
             <p className="text-sm text-gray-400">読み込み済みモデル</p>
             <span className="text-xs text-gray-500">{loadedModels.length}</span>
           </div>
+          {modelName && (
+            <div className="mb-3 rounded bg-gray-800/40 px-3 py-2 text-xs">
+              <div>
+                <span className="text-gray-400">現在選択中: </span>
+                <span className="text-green-400">{modelName}</span>
+              </div>
+              <div className="mt-1">
+                <span className="text-gray-400">アニメーション: </span>
+                <span className="text-green-400">
+                  {animationLoaded ? "再生中" : "なし"}
+                </span>
+              </div>
+              <p className="mt-2 text-gray-500">
+                アニメーションは現在選択中のモデルに適用されます
+              </p>
+            </div>
+          )}
           <div className="flex flex-col gap-2">
             {loadedModels.map((loadedModel) => {
               const isActive = loadedModel.id === activeModelId;
@@ -546,53 +610,6 @@ export default function FileUploadPanel({
         </div>
       </div>
 
-      {/* Model Folder Upload */}
-      <div
-        className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400 hover:bg-gray-800 transition-colors"
-        onClick={() => folderInputRef.current?.click()}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-      >
-        <input
-          ref={folderInputRef}
-          type="file"
-          className="hidden"
-          onChange={handleFolderChange}
-          {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
-        />
-        <div className="text-3xl mb-2">📁</div>
-        <p className="text-sm font-medium">
-          モデルフォルダを選択
-        </p>
-        <p className="text-xs text-gray-400 mt-1">
-          .pmx / .pmd / .vrm + 関連ファイルを含むフォルダ
-        </p>
-      </div>
-
-      {/* Animation Upload */}
-      <div
-        className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center cursor-pointer hover:border-green-400 hover:bg-gray-800 transition-colors"
-        onClick={() => animationInputRef.current?.click()}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-      >
-        <input
-          ref={animationInputRef}
-          type="file"
-          className="hidden"
-          accept=".vmd,.vrma"
-          multiple
-          onChange={handleAnimationChange}
-        />
-        <div className="text-3xl mb-2">🎬</div>
-        <p className="text-sm font-medium">
-          アニメーションファイルを選択
-        </p>
-        <p className="text-xs text-gray-400 mt-1">
-          .vmd / .vrma ファイル
-        </p>
-      </div>
-
       {/* Status */}
       <div className="flex flex-col gap-2 mt-2">
         {loading && (
@@ -624,26 +641,6 @@ export default function FileUploadPanel({
           <div className="text-red-400 text-sm bg-red-900/30 rounded p-2">
             {error}
           </div>
-        )}
-
-        {modelName && (
-          <div className="text-sm">
-            <span className="text-gray-400">モデル: </span>
-            <span className="text-green-400">{modelName}</span>
-          </div>
-        )}
-
-        {animationLoaded && (
-          <div className="text-sm">
-            <span className="text-gray-400">アニメーション: </span>
-            <span className="text-green-400">再生中</span>
-          </div>
-        )}
-
-        {modelName && (
-          <p className="text-xs text-gray-500">
-            アニメーションは現在選択中のモデルに適用されます
-          </p>
         )}
 
         {!modelName && !loading && (
