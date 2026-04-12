@@ -717,20 +717,6 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
       return;
     }
 
-    void rebuildActiveMmdHelper().catch((err) => {
-      console.error("MMD helper setup error:", err);
-      setError(`物理演算の初期化に失敗しました: ${getErrorMessage(err)}`);
-    });
-  }, [activeModelId, getModelById, rebuildActiveMmdHelper]);
-
-  useEffect(() => {
-    const activeModel = getModelById(activeModelId);
-    const currentMesh = activeModel?.mmdMesh ?? null;
-
-    if (activeModel?.kind !== "mmd" || !currentMesh) {
-      return;
-    }
-
     const currentHelper = activeModel.helper;
     const physics = getPhysicsController(currentHelper, currentMesh);
     const gravity = new THREE.Vector3(
