@@ -21,7 +21,6 @@ import EnvironmentLightWindow from "@/components/windows/EnvironmentLightWindow"
 import CameraControlsWindow from "@/components/windows/CameraControlsWindow";
 import DisplaySettingsWindow from "@/components/windows/DisplaySettingsWindow";
 import ExpressionControlWindow from "@/components/windows/ExpressionControlWindow";
-import ViewHelpWindow from "@/components/windows/ViewHelpWindow";
 import MenuWindow from "@/components/windows/MenuWindow";
 
 interface FloatingWindowOverlayProps {
@@ -249,19 +248,6 @@ export default function FloatingWindowOverlay({
         onClose={() => closeWindow("expressionControl")}
       >
         <ExpressionControlWindow activeModel={activeModel} />
-      </FloatingWindow>
-
-      {/* View Help */}
-      <FloatingWindow
-        title={WINDOW_LABELS.viewHelp}
-        visible={windowStates.viewHelp.visible}
-        zIndex={windowStates.viewHelp.zIndex}
-        position={windowStates.viewHelp.position}
-        onPositionChange={(pos) => setPosition("viewHelp", pos)}
-        onFocus={() => bringToFront("viewHelp")}
-        onClose={() => closeWindow("viewHelp")}
-      >
-        <ViewHelpWindow />
       </FloatingWindow>
     </div>
   );

@@ -25,17 +25,19 @@ export default function CameraControlsWindow({
         </button>
       </div>
       <div className="text-xs text-gray-500">
+        <p>クリック: モデル選択</p>
         {freeCameraEnabled ? (
           <>
-            <p>W/A/S/D: 前後左右移動</p>
+            <p className="mt-1">W/A/S/D: 前後左右移動</p>
             <p className="mt-1">Q / E: 上下移動</p>
             <p className="mt-1">左ドラッグ: 視線移動</p>
             <p className="mt-1">Shift: 加速</p>
           </>
         ) : (
           <>
-            <p>ドラッグ: 視点移動</p>
+            <p className="mt-1">ドラッグ: 視点移動</p>
             <p className="mt-1">Shift + ドラッグ: 選択モデルを移動</p>
+            <p className="mt-1">ライト本体/target ハンドルをドラッグ</p>
           </>
         )}
       </div>
