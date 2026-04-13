@@ -5,7 +5,7 @@ import { useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
-import type { LoadedModel } from "@/hooks/useModelLoader";
+import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { SceneLight } from "@/lib/scene-lights";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import FreeCameraControls from "./FreeCameraControls";
@@ -13,8 +13,8 @@ import MMDModel from "./MMDModel";
 import SceneLights from "./SceneLights";
 
 interface MMDSceneProps {
-  models: LoadedModel[];
-  activeModel: LoadedModel | null;
+  models: CharacterModel[];
+  activeModel: CharacterModel | null;
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
   lights: SceneLight[];

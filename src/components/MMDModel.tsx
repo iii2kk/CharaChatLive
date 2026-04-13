@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
-import type { LoadedModel } from "@/hooks/useModelLoader";
+import type { CharacterModel } from "@/hooks/useModelLoader";
 
 interface MMDModelProps {
-  models: LoadedModel[];
+  models: CharacterModel[];
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
   onDraggingChange: (dragging: boolean) => void;
@@ -70,7 +70,7 @@ export default function MMDModel({
     return dragRaycaster.ray.intersectPlane(plane, planeHitPoint) !== null;
   };
 
-  const getFootAnchorScreenPoint = (model: LoadedModel) => {
+  const getFootAnchorScreenPoint = (model: CharacterModel) => {
     model.object.updateMatrixWorld(true);
 
     const box = new THREE.Box3().setFromObject(model.object);
@@ -99,9 +99,7 @@ export default function MMDModel({
 
   useFrame((_, delta) => {
     for (const model of models) {
-      model.helper?.update(delta);
-      model.animationMixer?.update(delta);
-      model.vrm?.update(delta);
+      model.update(delta);
     }
 
     const highlightedModel =
@@ -254,7 +252,7 @@ export default function MMDModel({
     [onDraggingChange, onHoveredModelChange]
   );
 
-  const beginDrag = (event: ThreeEvent<PointerEvent>, model: LoadedModel) => {
+  const beginDrag = (event: ThreeEvent<PointerEvent>, model: CharacterModel) => {
     if (!interactionEnabled) {
       return;
     }
@@ -303,7 +301,7 @@ export default function MMDModel({
     };
   };
 
-  const updateDrag = (event: ThreeEvent<PointerEvent>, model: LoadedModel) => {
+  const updateDrag = (event: ThreeEvent<PointerEvent>, model: CharacterModel) => {
     const dragState = dragStateRef.current;
     if (!dragState || dragState.modelId !== model.id) {
       return;

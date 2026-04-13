@@ -4,13 +4,13 @@ import { Canvas } from "@react-three/fiber";
 import { Suspense, useEffect } from "react";
 import * as THREE from "three";
 import type { ViewerSettings } from "@/lib/viewer-settings";
-import type { LoadedModel } from "@/hooks/useModelLoader";
+import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { SceneLight } from "@/lib/scene-lights";
 import MMDScene from "./MMDScene";
 
 interface MMDViewerProps {
-  models: LoadedModel[];
-  activeModel: LoadedModel | null;
+  models: CharacterModel[];
+  activeModel: CharacterModel | null;
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
   lights: SceneLight[];

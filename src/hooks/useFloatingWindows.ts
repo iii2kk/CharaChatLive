@@ -19,6 +19,7 @@ export type WindowId =
   | "environmentLight"
   | "cameraControls"
   | "displaySettings"
+  | "expressionControl"
   | "viewHelp";
 
 export const WINDOW_IDS: WindowId[] = [
@@ -30,6 +31,7 @@ export const WINDOW_IDS: WindowId[] = [
   "environmentLight",
   "cameraControls",
   "displaySettings",
+  "expressionControl",
   "viewHelp",
 ];
 
@@ -42,6 +44,7 @@ export const WINDOW_LABELS: Record<WindowId, string> = {
   environmentLight: "環境ライト",
   cameraControls: "カメラ操作",
   displaySettings: "表示調整",
+  expressionControl: "表情コントロール",
   viewHelp: "3Dビュー操作",
 };
 
@@ -70,6 +73,7 @@ const DEFAULT_POSITIONS: Record<WindowId, { x: number; y: number }> = {
   environmentLight: { x: 340, y: 300 },
   cameraControls: { x: 340, y: 500 },
   displaySettings: { x: 660, y: 16 },
+  expressionControl: { x: 660, y: 500 },
   viewHelp: { x: 660, y: 300 },
 };
 
@@ -82,6 +86,7 @@ const DEFAULT_VISIBLE: Record<WindowId, boolean> = {
   environmentLight: false,
   cameraControls: false,
   displaySettings: false,
+  expressionControl: false,
   viewHelp: false,
 };
 

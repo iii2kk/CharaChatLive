@@ -9,10 +9,9 @@ import {
   type WindowId,
 } from "@/hooks/useFloatingWindows";
 import type { ModelEntry, ModelFile } from "@/types/models";
-import type { LoadedModel } from "@/hooks/useModelLoader";
+import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { SceneLight } from "@/lib/scene-lights";
-import type { ModelKind } from "@/lib/file-map";
 
 import PresetModelsWindow from "@/components/windows/PresetModelsWindow";
 import FileUploadWindow from "@/components/windows/FileUploadWindow";
@@ -21,6 +20,7 @@ import LightsWindow from "@/components/windows/LightsWindow";
 import EnvironmentLightWindow from "@/components/windows/EnvironmentLightWindow";
 import CameraControlsWindow from "@/components/windows/CameraControlsWindow";
 import DisplaySettingsWindow from "@/components/windows/DisplaySettingsWindow";
+import ExpressionControlWindow from "@/components/windows/ExpressionControlWindow";
 import ViewHelpWindow from "@/components/windows/ViewHelpWindow";
 import MenuWindow from "@/components/windows/MenuWindow";
 
@@ -29,14 +29,14 @@ interface FloatingWindowOverlayProps {
   onPresetSelected: (file: ModelFile) => void;
   onModelFolderSelected: (files: FileList) => void;
   onAnimationFilesSelected: (files: FileList) => void;
-  loadedModels: LoadedModel[];
+  loadedModels: CharacterModel[];
+  activeModel: CharacterModel | null;
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
   onRemoveModel: (modelId: string) => void;
   loading: boolean;
   error: string | null;
   modelName: string | null;
-  modelKind: ModelKind | null;
   animationLoaded: boolean;
   lights: SceneLight[];
   activeLightId: string | null;
@@ -59,13 +59,13 @@ export default function FloatingWindowOverlay({
   onModelFolderSelected,
   onAnimationFilesSelected,
   loadedModels,
+  activeModel,
   activeModelId,
   onActiveModelChange,
   onRemoveModel,
   loading,
   error,
   modelName,
-  modelKind,
   animationLoaded,
   lights,
   activeLightId,
@@ -234,8 +234,21 @@ export default function FloatingWindowOverlay({
         <DisplaySettingsWindow
           viewerSettings={viewerSettings}
           onViewerSettingsChange={onViewerSettingsChange}
-          modelKind={modelKind}
+          physicsCapability={activeModel?.physics.capability ?? null}
         />
+      </FloatingWindow>
+
+      {/* Expression Control */}
+      <FloatingWindow
+        title={WINDOW_LABELS.expressionControl}
+        visible={windowStates.expressionControl.visible}
+        zIndex={windowStates.expressionControl.zIndex}
+        position={windowStates.expressionControl.position}
+        onPositionChange={(pos) => setPosition("expressionControl", pos)}
+        onFocus={() => bringToFront("expressionControl")}
+        onClose={() => closeWindow("expressionControl")}
+      >
+        <ExpressionControlWindow activeModel={activeModel} />
       </FloatingWindow>
 
       {/* View Help */}

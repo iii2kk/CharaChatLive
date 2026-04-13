@@ -5,7 +5,7 @@ import {
   defaultViewerSettings,
   type ViewerSettings,
 } from "@/lib/viewer-settings";
-import type { ModelKind } from "@/lib/file-map";
+import type { PhysicsCapability } from "@/lib/character/types";
 
 type NumericViewerSettingKey = Exclude<
   keyof ViewerSettings,
@@ -15,14 +15,18 @@ type NumericViewerSettingKey = Exclude<
 interface DisplaySettingsWindowProps {
   viewerSettings: ViewerSettings;
   onViewerSettingsChange: React.Dispatch<React.SetStateAction<ViewerSettings>>;
-  modelKind: ModelKind | null;
+  /** 現在アクティブなモデルの物理カテゴリ。null はモデル未選択 */
+  physicsCapability: PhysicsCapability | null;
 }
 
 export default function DisplaySettingsWindow({
   viewerSettings,
   onViewerSettingsChange,
-  modelKind,
+  physicsCapability,
 }: DisplaySettingsWindowProps) {
+  // 重力は両方のモデル種別で適用可能だが、無効時は常に disable
+  const gravityDisabled = !viewerSettings.physicsEnabled;
+  const physicsToggleDisabled = physicsCapability === null;
   const handleViewerSettingChange = useCallback(
     (key: keyof ViewerSettings, value: number) => {
       onViewerSettingsChange((prev) => ({
@@ -61,7 +65,7 @@ export default function DisplaySettingsWindow({
       min: -100,
       max: 100,
       step: 1,
-      disabled: modelKind !== "mmd" || !viewerSettings.physicsEnabled,
+      disabled: gravityDisabled,
     },
     {
       key: "gravityY",
@@ -69,7 +73,7 @@ export default function DisplaySettingsWindow({
       min: -200,
       max: 50,
       step: 1,
-      disabled: modelKind !== "mmd" || !viewerSettings.physicsEnabled,
+      disabled: gravityDisabled,
     },
     {
       key: "gravityZ",
@@ -77,7 +81,7 @@ export default function DisplaySettingsWindow({
       min: -100,
       max: 100,
       step: 1,
-      disabled: modelKind !== "mmd" || !viewerSettings.physicsEnabled,
+      disabled: gravityDisabled,
     },
   ];
 
@@ -94,11 +98,23 @@ export default function DisplaySettingsWindow({
       </div>
       <div className="flex flex-col gap-3">
         <label className="flex items-center justify-between rounded bg-gray-800/50 px-3 py-2 text-sm">
-          <span className="text-gray-300">Physics (MMD)</span>
+          <span className="text-gray-300">
+            Physics
+            {physicsCapability === "spring-bone" && (
+              <span className="ml-1 text-[10px] text-gray-500">
+                (VRM SpringBone)
+              </span>
+            )}
+            {physicsCapability === "full" && (
+              <span className="ml-1 text-[10px] text-gray-500">
+                (MMD Rigid Body)
+              </span>
+            )}
+          </span>
           <input
             type="checkbox"
             checked={viewerSettings.physicsEnabled}
-            disabled={modelKind !== "mmd"}
+            disabled={physicsToggleDisabled}
             onChange={(e) => {
               const { checked } = e.currentTarget;
               onViewerSettingsChange((prev) => ({

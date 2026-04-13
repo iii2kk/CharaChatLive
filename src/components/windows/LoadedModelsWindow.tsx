@@ -1,10 +1,10 @@
 "use client";
 
 import ScrollArea from "@/components/ScrollArea";
-import type { LoadedModel } from "@/hooks/useModelLoader";
+import type { CharacterModel } from "@/hooks/useModelLoader";
 
 interface LoadedModelsWindowProps {
-  loadedModels: LoadedModel[];
+  loadedModels: CharacterModel[];
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
   onRemoveModel: (modelId: string) => void;
@@ -72,7 +72,7 @@ export default function LoadedModelsWindow({
                   </span>
                 </div>
                 <div className="mt-1 text-xs text-gray-500">
-                  {loadedModel.animationLoaded
+                  {loadedModel.animation.isLoaded()
                     ? "アニメーションあり"
                     : "アニメーションなし"}
                 </div>

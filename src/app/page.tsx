@@ -158,14 +158,14 @@ export default function Home() {
         onModelFolderSelected={handleModelFolderSelected}
         onAnimationFilesSelected={handleAnimationFilesSelected}
         loadedModels={models}
+        activeModel={activeModel}
         activeModelId={activeModelId}
         onActiveModelChange={setActiveModelId}
         onRemoveModel={removeModel}
         loading={loading}
         error={error}
         modelName={activeModel?.name ?? null}
-        modelKind={activeModel?.kind ?? null}
-        animationLoaded={activeModel?.animationLoaded ?? false}
+        animationLoaded={activeModel?.animation.isLoaded() ?? false}
         lights={lights}
         activeLightId={activeLightId}
         onActiveLightChange={setActiveLightId}
