@@ -22,7 +22,7 @@ import {
   type SceneLight,
 } from "@/lib/scene-lights";
 
-const MMDViewer = dynamic(() => import("@/components/MMDViewer"), {
+const CharacterViewer = dynamic(() => import("@/components/CharacterViewer"), {
   ssr: false,
 });
 
@@ -139,7 +139,7 @@ export default function Home() {
   return (
     <div className="h-full w-full relative">
       <div className="h-full w-full">
-        <MMDViewer
+        <CharacterViewer
           models={models}
           activeModel={activeModel}
           activeModelId={activeModelId}

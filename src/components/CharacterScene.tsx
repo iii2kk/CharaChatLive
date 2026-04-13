@@ -9,10 +9,10 @@ import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { SceneLight } from "@/lib/scene-lights";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import FreeCameraControls from "./FreeCameraControls";
-import MMDModel from "./MMDModel";
+import CharacterModels from "./CharacterModels";
 import SceneLights from "./SceneLights";
 
-interface MMDSceneProps {
+interface CharacterSceneProps {
   models: CharacterModel[];
   activeModel: CharacterModel | null;
   activeModelId: string | null;
@@ -25,7 +25,7 @@ interface MMDSceneProps {
   viewerSettings: ViewerSettings;
 }
 
-export default function MMDScene({
+export default function CharacterScene({
   models,
   activeModel,
   activeModelId,
@@ -36,7 +36,7 @@ export default function MMDScene({
   onLightsChange,
   freeCameraEnabled,
   viewerSettings,
-}: MMDSceneProps) {
+}: CharacterSceneProps) {
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 10, 0), []);
   const { camera, invalidate } = useThree();
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
@@ -204,7 +204,7 @@ export default function MMDScene({
         infiniteGrid
       />
 
-      <MMDModel
+      <CharacterModels
         models={models}
         activeModelId={activeModelId}
         onActiveModelChange={onActiveModelChange}

@@ -6,9 +6,9 @@ import * as THREE from "three";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { SceneLight } from "@/lib/scene-lights";
-import MMDScene from "./MMDScene";
+import CharacterScene from "./CharacterScene";
 
-interface MMDViewerProps {
+interface CharacterViewerProps {
   models: CharacterModel[];
   activeModel: CharacterModel | null;
   activeModelId: string | null;
@@ -27,7 +27,7 @@ const baseEmissives = new WeakMap<THREE.Material, THREE.Color>();
 function MaterialTuner({
   models,
   viewerSettings,
-}: Pick<MMDViewerProps, "models" | "viewerSettings">) {
+}: Pick<CharacterViewerProps, "models" | "viewerSettings">) {
   useEffect(() => {
     if (models.length === 0) return;
 
@@ -76,7 +76,7 @@ function MaterialTuner({
   return null;
 }
 
-export default function MMDViewer({
+export default function CharacterViewer({
   models,
   activeModel,
   activeModelId,
@@ -87,7 +87,7 @@ export default function MMDViewer({
   onLightsChange,
   freeCameraEnabled,
   viewerSettings,
-}: MMDViewerProps) {
+}: CharacterViewerProps) {
   return (
     <Canvas
       shadows
@@ -96,7 +96,7 @@ export default function MMDViewer({
     >
       <MaterialTuner models={models} viewerSettings={viewerSettings} />
       <Suspense fallback={null}>
-        <MMDScene
+        <CharacterScene
           models={models}
           activeModel={activeModel}
           activeModelId={activeModelId}

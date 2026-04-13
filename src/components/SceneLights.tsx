@@ -26,6 +26,11 @@ type DragState = {
   offset: THREE.Vector3;
 };
 
+type PointerCaptureTarget = EventTarget & {
+  setPointerCapture: (pointerId: number) => void;
+  releasePointerCapture: (pointerId: number) => void;
+};
+
 function toVector3(value: [number, number, number]) {
   return new THREE.Vector3(value[0], value[1], value[2]);
 }
@@ -113,7 +118,11 @@ export default function SceneLights({
     }
 
     event.stopPropagation();
-    event.target.setPointerCapture(event.pointerId);
+    const pointerTarget = event.target as PointerCaptureTarget | null;
+    if (!pointerTarget) {
+      return;
+    }
+    pointerTarget.setPointerCapture(event.pointerId);
     onActiveLightChange(light.id);
     onDraggingChange(true);
     onHoveredHandleChange(true);
@@ -161,7 +170,14 @@ export default function SceneLights({
     }
 
     event.stopPropagation();
-    event.target.releasePointerCapture(event.pointerId);
+    const pointerTarget = event.target as PointerCaptureTarget | null;
+    if (!pointerTarget) {
+      dragStateRef.current = null;
+      onDraggingChange(false);
+      onHoveredHandleChange(false);
+      return;
+    }
+    pointerTarget.releasePointerCapture(event.pointerId);
     dragStateRef.current = null;
     onDraggingChange(false);
     onHoveredHandleChange(false);
@@ -190,17 +206,23 @@ export default function SceneLights({
 
                 <mesh
                   position={bodyPosition}
-                  onClick={(event) => {
+                  onClick={(event: ThreeEvent<MouseEvent>) => {
                     if (!interactionEnabled) {
                       return;
                     }
                     event.stopPropagation();
                     onActiveLightChange(light.id);
                   }}
-                  onPointerDown={(event) => beginDrag(event, light, "position")}
-                  onPointerMove={updateDrag}
-                  onPointerUp={endDrag}
-                  onPointerCancel={endDrag}
+                  onPointerDown={(event: ThreeEvent<PointerEvent>) =>
+                    beginDrag(event, light, "position")
+                  }
+                  onPointerMove={(event: ThreeEvent<PointerEvent>) =>
+                    updateDrag(event)
+                  }
+                  onPointerUp={(event: ThreeEvent<PointerEvent>) => endDrag(event)}
+                  onPointerCancel={(event: ThreeEvent<PointerEvent>) =>
+                    endDrag(event)
+                  }
                   onPointerOver={() => {
                     if (interactionEnabled) {
                       onHoveredHandleChange(true);
@@ -218,17 +240,23 @@ export default function SceneLights({
 
                 <mesh
                   position={targetPosition}
-                  onClick={(event) => {
+                  onClick={(event: ThreeEvent<MouseEvent>) => {
                     if (!interactionEnabled) {
                       return;
                     }
                     event.stopPropagation();
                     onActiveLightChange(light.id);
                   }}
-                  onPointerDown={(event) => beginDrag(event, light, "target")}
-                  onPointerMove={updateDrag}
-                  onPointerUp={endDrag}
-                  onPointerCancel={endDrag}
+                  onPointerDown={(event: ThreeEvent<PointerEvent>) =>
+                    beginDrag(event, light, "target")
+                  }
+                  onPointerMove={(event: ThreeEvent<PointerEvent>) =>
+                    updateDrag(event)
+                  }
+                  onPointerUp={(event: ThreeEvent<PointerEvent>) => endDrag(event)}
+                  onPointerCancel={(event: ThreeEvent<PointerEvent>) =>
+                    endDrag(event)
+                  }
                   onPointerOver={() => {
                     if (interactionEnabled) {
                       onHoveredHandleChange(true);

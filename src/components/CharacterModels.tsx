@@ -5,7 +5,7 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { CharacterModel } from "@/hooks/useModelLoader";
 
-interface MMDModelProps {
+interface CharacterModelsProps {
   models: CharacterModel[];
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
@@ -30,14 +30,19 @@ type DragState = {
   y: number;
 };
 
-export default function MMDModel({
+type PointerCaptureTarget = EventTarget & {
+  setPointerCapture: (pointerId: number) => void;
+  releasePointerCapture: (pointerId: number) => void;
+};
+
+export default function CharacterModels({
   models,
   activeModelId,
   onActiveModelChange,
   onDraggingChange,
   onHoveredModelChange,
   interactionEnabled,
-}: MMDModelProps) {
+}: CharacterModelsProps) {
   const { camera, gl, scene } = useThree();
   const dragStateRef = useRef<DragState | null>(null);
   const selectionRingRef = useRef<THREE.Mesh | null>(null);
@@ -285,7 +290,11 @@ export default function MMDModel({
     }
 
     event.stopPropagation();
-    event.target.setPointerCapture(event.pointerId);
+    const target = event.target as PointerCaptureTarget | null;
+    if (!target) {
+      return;
+    }
+    target.setPointerCapture(event.pointerId);
     onActiveModelChange(model.id);
     showSelectionHighlight(model.id);
     onDraggingChange(true);
@@ -345,7 +354,13 @@ export default function MMDModel({
     }
 
     event.stopPropagation();
-    event.target.releasePointerCapture(event.pointerId);
+    const target = event.target as PointerCaptureTarget | null;
+    if (!target) {
+      dragStateRef.current = null;
+      onDraggingChange(false);
+      return;
+    }
+    target.releasePointerCapture(event.pointerId);
     dragStateRef.current = null;
     onDraggingChange(false);
   };
@@ -356,7 +371,7 @@ export default function MMDModel({
         <primitive
           key={model.id}
           object={model.object}
-          onClick={(event) => {
+          onClick={(event: ThreeEvent<MouseEvent>) => {
             if (!interactionEnabled) {
               return;
             }
@@ -364,24 +379,26 @@ export default function MMDModel({
             onActiveModelChange(model.id);
             showSelectionHighlight(model.id);
           }}
-          onPointerDown={(event) => beginDrag(event, model)}
+          onPointerDown={(event: ThreeEvent<PointerEvent>) =>
+            beginDrag(event, model)
+          }
           onPointerOver={() => {
             if (interactionEnabled) {
               onHoveredModelChange(model.id);
             }
           }}
-          onPointerMove={(event) => {
+          onPointerMove={(event: ThreeEvent<PointerEvent>) => {
             if (interactionEnabled) {
               onHoveredModelChange(model.id);
             }
             updateDrag(event, model);
           }}
-          onPointerUp={endDrag}
+          onPointerUp={(event: ThreeEvent<PointerEvent>) => endDrag(event)}
           onPointerMissed={() => {
             onDraggingChange(false);
             onHoveredModelChange(null);
           }}
-          onPointerCancel={endDrag}
+          onPointerCancel={(event: ThreeEvent<PointerEvent>) => endDrag(event)}
           onPointerOut={() => {
             if (dragStateRef.current?.modelId !== model.id) {
               onHoveredModelChange(null);
