@@ -22,6 +22,11 @@ export interface Live2DRenderContext {
   canvas: HTMLCanvasElement;
 }
 
+const LIVE2D_CANVAS_RENDER_SCALE = 0.75;
+const LIVE2D_CANVAS_MIN_EDGE = 256;
+const LIVE2D_CANVAS_MAX_EDGE = 1024;
+const LIVE2D_VIEWPORT_HEIGHT_USAGE = 0.7;
+
 declare global {
   interface Window {
     Live2DCubismCore?: {
@@ -64,6 +69,57 @@ function applyCubismCoreCompatibilityPatch(): void {
   }) as typeof modelApi.fromMoc;
 
   (modelApi.fromMoc as typeof patchedFromMoc).__live2dCompatPatched = true;
+}
+
+function computeLive2DCanvasSize(
+  modelWidth: number,
+  modelHeight: number
+): { width: number; height: number } {
+  const safeWidth = Math.max(1, modelWidth);
+  const safeHeight = Math.max(1, modelHeight);
+  const aspect = safeWidth / safeHeight;
+
+  const viewportWidth = window.innerWidth || 1280;
+  const viewportHeight = window.innerHeight || 720;
+  const viewportScale = Math.min(window.devicePixelRatio || 1, 2);
+
+  const maxTargetWidth =
+    viewportWidth * viewportScale * LIVE2D_CANVAS_RENDER_SCALE;
+  const maxTargetHeight =
+    viewportHeight *
+    viewportScale *
+    LIVE2D_VIEWPORT_HEIGHT_USAGE *
+    LIVE2D_CANVAS_RENDER_SCALE;
+
+  let width = safeWidth;
+  let height = safeHeight;
+  let scale = 1;
+
+  if (width > maxTargetWidth || height > maxTargetHeight) {
+    scale = Math.min(maxTargetWidth / width, maxTargetHeight / height);
+  }
+
+  width *= scale;
+  height *= scale;
+
+  // 極端に小さいモデルでもテクスチャが潰れすぎないよう最低辺を確保する。
+  if (Math.max(width, height) < LIVE2D_CANVAS_MIN_EDGE) {
+    const minScale = LIVE2D_CANVAS_MIN_EDGE / Math.max(width, height);
+    width *= minScale;
+    height *= minScale;
+  }
+
+  // 上限を超える場合はアスペクトを維持したまま再度縮小する。
+  if (Math.max(width, height) > LIVE2D_CANVAS_MAX_EDGE) {
+    const maxScale = LIVE2D_CANVAS_MAX_EDGE / Math.max(width, height);
+    width *= maxScale;
+    height *= maxScale;
+  }
+
+  return {
+    width: Math.max(1, Math.round(width)),
+    height: Math.max(1, Math.round(height)),
+  };
 }
 
 /**
@@ -168,12 +224,14 @@ export async function createLive2DContext(opts: {
     autoUpdate: false,
   });
 
-  const width = Math.ceil(live2dModel.internalModel.width);
-  const height = Math.ceil(live2dModel.internalModel.height);
+  const { width, height } = computeLive2DCanvasSize(
+    live2dModel.internalModel.width,
+    live2dModel.internalModel.height
+  );
 
   const canvas = document.createElement("canvas");
-  canvas.width = Math.max(width, 512);
-  canvas.height = Math.max(height, 512);
+  canvas.width = width;
+  canvas.height = height;
 
   const pixiApp = new PIXIMod.Application<HTMLCanvasElement>({
     view: canvas,
