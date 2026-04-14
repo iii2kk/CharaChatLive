@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CharaChatLive
 
-## Getting Started
+Next.js ベースのキャラクタービューアです。MMD / VRM / Live2D を読み込み、Three.js 上で表示します。
 
-First, run the development server:
+## Development
+
+開発サーバーを起動します。
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+ブラウザで `http://localhost:3000` を開いて確認します。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Live2D Notes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Live2D は `pixi-live2d-display-lipsyncpatch` と Cubism Core を組み合わせて描画しています。
+Cubism Core は [public/live2dcubismcore.min.js](/f:/TempProject/CharaChatLive/public/live2dcubismcore.min.js) を `<Script>` でそのまま読み込み、`src/lib/character/live2dPixi.ts` で初期化しています。
 
-## Learn More
+### Cubism Core Compatibility Patch
 
-To learn more about Next.js, take a look at the following resources:
+`src/lib/character/live2dPixi.ts` では、`window.Live2DCubismCore.Model.fromMoc()` に互換パッチを入れています。
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+背景:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `pixi-live2d-display-lipsyncpatch@0.5.0-ls-8` は Cubism model に `model.drawables.renderOrders` がある前提で描画順を参照します
+- 一方で、このプロジェクトで使っている `live2dcubismcore.min.js` では `renderOrders` は `model` 本体側にあり、`model.getRenderOrders()` で取得する実装です
+- そのため未補正のままだと Live2D 初回描画時に `Cannot read properties of undefined (reading '0')` が発生します
 
-## Deploy on Vercel
+対応内容:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `fromMoc()` の戻り値に `drawables` があり
+- `getRenderOrders()` が存在し
+- `drawables.renderOrders` が未定義
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+である場合に、`drawables.renderOrders = model.getRenderOrders()` を補完しています。
+
+これは `F:\\TempProject\\temp\\live2d-test2` の検証用サンプルと同じ互換対応です。
+
+### 注意
+
+- このパッチは Cubism Core と `pixi-live2d-display-lipsyncpatch` の API 差分を吸収するためのものです
+- `live2dcubismcore.min.js` を差し替えたり、`pixi-live2d-display-lipsyncpatch` のバージョンを更新した場合は不要になるか、別の調整が必要になる可能性があります
+- Live2D 周りで再び描画エラーが出た場合は、まず `renderOrders` 周辺の互換性を確認してください

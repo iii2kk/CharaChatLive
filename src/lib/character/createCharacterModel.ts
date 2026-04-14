@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { FileMap, ModelKind } from "@/lib/file-map";
+import { Live2dCharacterModel } from "./Live2dCharacterModel";
 import { MmdCharacterModel } from "./MmdCharacterModel";
 import { VrmCharacterModel } from "./VrmCharacterModel";
 import type { CharacterModel } from "./types";
@@ -22,6 +23,15 @@ export async function createCharacterModel(
 ): Promise<CharacterModel> {
   if (kind === "vrm") {
     return VrmCharacterModel.load({
+      id: options.id,
+      name: options.name,
+      url,
+      fileMap,
+    });
+  }
+
+  if (kind === "live2d") {
+    return Live2dCharacterModel.load({
       id: options.id,
       name: options.name,
       url,

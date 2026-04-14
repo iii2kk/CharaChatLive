@@ -1,6 +1,6 @@
 export type FileMap = Map<string, string>;
-export type ModelKind = "mmd" | "vrm";
-export type AnimationKind = "vmd" | "vrma";
+export type ModelKind = "mmd" | "vrm" | "live2d";
+export type AnimationKind = "vmd" | "vrma" | "motion3";
 
 export interface ModelFileMatch {
   kind: ModelKind;
@@ -10,8 +10,10 @@ export interface ModelFileMatch {
 
 const mmdModelPattern = /\.(pmx|pmd)$/i;
 const vrmModelPattern = /\.vrm$/i;
+const live2dModelPattern = /\.model3\.json$/i;
 const vmdPattern = /\.vmd$/i;
 const vrmaPattern = /\.vrma$/i;
+const motion3Pattern = /\.motion3\.json$/i;
 
 export function buildFileMap(files: FileList): FileMap {
   const map: FileMap = new Map();
@@ -40,12 +42,14 @@ export function buildFileMap(files: FileList): FileMap {
 export function getModelKind(path: string): ModelKind | null {
   if (mmdModelPattern.test(path)) return "mmd";
   if (vrmModelPattern.test(path)) return "vrm";
+  if (live2dModelPattern.test(path)) return "live2d";
   return null;
 }
 
 export function getAnimationKind(path: string): AnimationKind | null {
   if (vmdPattern.test(path)) return "vmd";
   if (vrmaPattern.test(path)) return "vrma";
+  if (motion3Pattern.test(path)) return "motion3";
   return null;
 }
 

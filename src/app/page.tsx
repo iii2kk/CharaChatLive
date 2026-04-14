@@ -91,8 +91,17 @@ export default function Home() {
         return;
       }
 
-      const animationKind: AnimationKind =
-        modelEntry.kind === "vrm" ? "vrma" : "vmd";
+      const animationKind: AnimationKind = (() => {
+        switch (modelEntry.kind) {
+          case "vrm":
+            return "vrma";
+          case "live2d":
+            return "motion3";
+          case "mmd":
+          default:
+            return "vmd";
+        }
+      })();
       const animationUrls = findAnimationFiles(fileMap, animationKind);
 
       loadModel(modelEntry.kind, modelEntry.url, fileMap, {

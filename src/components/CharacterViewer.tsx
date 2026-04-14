@@ -32,6 +32,10 @@ function MaterialTuner({
     if (models.length === 0) return;
 
     for (const model of models) {
+      // Live2D は板ポリ + CanvasTexture なので、MMD/VRM 向けのマテリアル調整を
+      // 適用すると表示色が壊れるためスキップする。
+      if (model.kind === "live2d") continue;
+
       model.object.traverse((child) => {
         if (!(child instanceof THREE.Mesh || child instanceof THREE.SkinnedMesh)) {
           return;

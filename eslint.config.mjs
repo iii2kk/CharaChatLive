@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Live2D Cubism Core は Live2D 配布の minified ランタイムなので lint 対象外。
+    // ライセンス上 改変不可 で、かつ IIFE の括弧関数呼び出しを no-unused-expressions が
+    // 大量に誤検知するため。
+    "public/live2dcubismcore.min.js",
   ]),
 ]);
 

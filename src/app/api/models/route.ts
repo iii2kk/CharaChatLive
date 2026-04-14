@@ -23,7 +23,7 @@ function collectModelFiles(
       continue;
     }
 
-    if (!/\.(pmx|pmd|vrm)$/i.test(entry.name)) {
+    if (!/\.(pmx|pmd|vrm|model3\.json)$/i.test(entry.name)) {
       continue;
     }
 

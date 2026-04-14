@@ -189,6 +189,10 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         setError("VRMA は VRM モデルにのみ適用できます");
         return;
       }
+      if (kind === "motion3" && targetModel.kind !== "live2d") {
+        setError("motion3.json は Live2D モデルにのみ適用できます");
+        return;
+      }
 
       setLoading(true);
       setError(null);
