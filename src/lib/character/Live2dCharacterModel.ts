@@ -19,6 +19,7 @@ import type {
 } from "./types";
 import { SEMANTIC_EXPRESSION_KEYS } from "./types";
 import { revokeFileMapUrls } from "./urlModifier";
+import type { Live2DAtlasHandle, Live2DAtlasLayout } from "./live2dPixi";
 import { computeLive2DCanvasSize, createLive2DContext } from "./live2dPixi";
 
 /**
@@ -71,6 +72,7 @@ interface Live2dConstructorOptions {
   pixiApp: PixiApplication<HTMLCanvasElement>;
   live2dModel: Live2DModel;
   canvas: HTMLCanvasElement;
+  atlasHandle: Live2DAtlasHandle;
   fileMap: FileMap | null;
   renderScale: number;
 }
@@ -90,6 +92,7 @@ export class Live2dCharacterModel implements CharacterModel {
   private pixiApp: PixiApplication<HTMLCanvasElement>;
   private live2dModel: Live2DModel;
   private canvas: HTMLCanvasElement;
+  private atlasHandle: Live2DAtlasHandle;
   private canvasTexture: THREE.CanvasTexture;
   private planeMesh: THREE.Mesh;
   private group: THREE.Group;
@@ -110,6 +113,7 @@ export class Live2dCharacterModel implements CharacterModel {
     this.pixiApp = opts.pixiApp;
     this.live2dModel = opts.live2dModel;
     this.canvas = opts.canvas;
+    this.atlasHandle = opts.atlasHandle;
     this.fileMap = opts.fileMap;
     this.renderScale = opts.renderScale;
 
@@ -121,9 +125,12 @@ export class Live2dCharacterModel implements CharacterModel {
     this.canvasTexture.minFilter = THREE.LinearFilter;
     this.canvasTexture.magFilter = THREE.LinearFilter;
     this.canvasTexture.generateMipmaps = false;
+    this.canvasTexture.wrapS = THREE.ClampToEdgeWrapping;
+    this.canvasTexture.wrapT = THREE.ClampToEdgeWrapping;
 
+    const initialLayout = this.atlasHandle.getLayout();
     const planeWidth =
-      PLANE_HEIGHT * (opts.canvas.width / opts.canvas.height);
+      PLANE_HEIGHT * (initialLayout.width / initialLayout.height);
     this.planeMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(planeWidth, PLANE_HEIGHT),
       new THREE.MeshBasicMaterial({
@@ -139,6 +146,10 @@ export class Live2dCharacterModel implements CharacterModel {
     this.group.name = `live2d:${opts.id}`;
     this.group.add(this.planeMesh);
     this.object = this.group;
+
+    this.atlasHandle.setOnLayoutChange((layout) => {
+      this.applyAtlasLayout(layout);
+    });
 
     this.expressions = this.createExpressionController();
     this.expressionMapping = this.createExpressionMappingWithSemanticKeys();
@@ -174,6 +185,7 @@ export class Live2dCharacterModel implements CharacterModel {
       pixiApp: ctx.pixiApp,
       live2dModel: ctx.live2dModel,
       canvas: ctx.canvas,
+      atlasHandle: ctx.atlasHandle,
       fileMap: opts.fileMap,
       renderScale: opts.renderScale,
     });
@@ -223,17 +235,11 @@ export class Live2dCharacterModel implements CharacterModel {
     }
     this.disposed = true;
 
+    this.atlasHandle.setOnLayoutChange(null);
+    this.atlasHandle.dispose();
+
     try {
       this.live2dModel.destroy({
-        children: true,
-        texture: true,
-        baseTexture: true,
-      });
-    } catch {
-      /* ignore */
-    }
-    try {
-      this.pixiApp.destroy(true, {
         children: true,
         texture: true,
         baseTexture: true,
@@ -332,27 +338,33 @@ export class Live2dCharacterModel implements CharacterModel {
       this.live2dModel.internalModel.height,
       this.renderScale
     );
+    const currentLayout = this.atlasHandle.getLayout();
 
-    if (this.canvas.width === width && this.canvas.height === height) {
+    if (currentLayout.width === width && currentLayout.height === height) {
       return;
     }
 
-    this.canvas.width = width;
-    this.canvas.height = height;
-    this.pixiApp.renderer.resize(width, height);
+    this.atlasHandle.updateSize(width, height);
+  }
 
-    this.live2dModel.position.set(width / 2, height / 2);
-    const modelW = this.live2dModel.internalModel.width;
-    const modelH = this.live2dModel.internalModel.height;
-    const scale = Math.min(width / modelW, height / modelH);
-    this.live2dModel.scale.set(scale);
+  private applyAtlasLayout(layout: Live2DAtlasLayout): void {
+    if (this.disposed) {
+      return;
+    }
 
-    const planeWidth = PLANE_HEIGHT * (width / height);
+    this.canvasTexture.repeat.set(
+      layout.width / layout.atlasWidth,
+      layout.height / layout.atlasHeight
+    );
+    this.canvasTexture.offset.set(
+      layout.x / layout.atlasWidth,
+      1 - (layout.y + layout.height) / layout.atlasHeight
+    );
+    this.canvasTexture.needsUpdate = true;
+
+    const planeWidth = PLANE_HEIGHT * (layout.width / layout.height);
     this.planeMesh.geometry.dispose();
     this.planeMesh.geometry = new THREE.PlaneGeometry(planeWidth, PLANE_HEIGHT);
-
-    this.pixiApp.renderer.render(this.pixiApp.stage);
-    this.canvasTexture.needsUpdate = true;
   }
 
   /**

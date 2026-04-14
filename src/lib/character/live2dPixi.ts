@@ -20,6 +20,25 @@ export interface Live2DRenderContext {
   pixiApp: PIXI.Application<HTMLCanvasElement>;
   live2dModel: Live2DModel;
   canvas: HTMLCanvasElement;
+  atlasHandle: Live2DAtlasHandle;
+}
+
+export interface Live2DAtlasLayout {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  atlasWidth: number;
+  atlasHeight: number;
+}
+
+export interface Live2DAtlasHandle {
+  getLayout(): Live2DAtlasLayout;
+  setOnLayoutChange(
+    callback: ((layout: Live2DAtlasLayout) => void) | null
+  ): void;
+  updateSize(width: number, height: number): void;
+  dispose(): void;
 }
 
 const LIVE2D_CANVAS_RENDER_SCALE = 0.75;
@@ -69,6 +88,180 @@ function applyCubismCoreCompatibilityPatch(): void {
   }) as typeof modelApi.fromMoc;
 
   (modelApi.fromMoc as typeof patchedFromMoc).__live2dCompatPatched = true;
+}
+
+interface SharedAtlasEntry {
+  live2dModel: Live2DModel;
+  width: number;
+  height: number;
+  layout: Live2DAtlasLayout;
+  onLayoutChange: ((layout: Live2DAtlasLayout) => void) | null;
+}
+
+class SharedLive2DAtlasHandle implements Live2DAtlasHandle {
+  constructor(
+    private atlas: SharedLive2DAtlas,
+    private entry: SharedAtlasEntry
+  ) {}
+
+  getLayout(): Live2DAtlasLayout {
+    return { ...this.entry.layout };
+  }
+
+  setOnLayoutChange(
+    callback: ((layout: Live2DAtlasLayout) => void) | null
+  ): void {
+    this.entry.onLayoutChange = callback;
+    if (callback) {
+      callback(this.getLayout());
+    }
+  }
+
+  updateSize(width: number, height: number): void {
+    this.entry.width = width;
+    this.entry.height = height;
+    this.atlas.relayout();
+  }
+
+  dispose(): void {
+    this.atlas.unregister(this.entry);
+  }
+}
+
+class SharedLive2DAtlas {
+  readonly pixiApp: PIXI.Application<HTMLCanvasElement>;
+  readonly canvas: HTMLCanvasElement;
+  private readonly entries: SharedAtlasEntry[] = [];
+  private readonly slotPadding = 8;
+
+  constructor(pixiApp: PIXI.Application<HTMLCanvasElement>, canvas: HTMLCanvasElement) {
+    this.pixiApp = pixiApp;
+    this.canvas = canvas;
+  }
+
+  register(
+    live2dModel: Live2DModel,
+    width: number,
+    height: number
+  ): Live2DAtlasHandle {
+    const entry: SharedAtlasEntry = {
+      live2dModel,
+      width,
+      height,
+      layout: {
+        x: 0,
+        y: 0,
+        width,
+        height,
+        atlasWidth: width,
+        atlasHeight: height,
+      },
+      onLayoutChange: null,
+    };
+
+    this.entries.push(entry);
+    this.pixiApp.stage.addChild(live2dModel);
+    this.relayout();
+
+    return new SharedLive2DAtlasHandle(this, entry);
+  }
+
+  unregister(entry: SharedAtlasEntry): void {
+    const index = this.entries.indexOf(entry);
+    if (index === -1) {
+      return;
+    }
+
+    entry.onLayoutChange = null;
+    this.pixiApp.stage.removeChild(entry.live2dModel);
+    this.entries.splice(index, 1);
+
+    if (this.entries.length === 0) {
+      this.pixiApp.destroy(true, {
+        children: false,
+        texture: false,
+        baseTexture: false,
+      });
+      sharedLive2DAtlas = null;
+      return;
+    }
+
+    this.relayout();
+  }
+
+  relayout(): void {
+    if (this.entries.length === 0) {
+      return;
+    }
+
+    const atlasHeight = Math.max(...this.entries.map((entry) => entry.height));
+    let cursorX = 0;
+
+    for (const entry of this.entries) {
+      entry.layout = {
+        x: cursorX,
+        y: 0,
+        width: entry.width,
+        height: entry.height,
+        atlasWidth: 0,
+        atlasHeight,
+      };
+      cursorX += entry.width + this.slotPadding;
+    }
+
+    const atlasWidth = Math.max(1, cursorX - this.slotPadding);
+    this.pixiApp.renderer.resize(atlasWidth, atlasHeight);
+
+    for (const entry of this.entries) {
+      entry.layout = {
+        ...entry.layout,
+        atlasWidth,
+      };
+
+      entry.live2dModel.position.set(
+        entry.layout.x + entry.layout.width / 2,
+        entry.layout.y + entry.layout.height / 2
+      );
+
+      const modelWidth = entry.live2dModel.internalModel.width;
+      const modelHeight = entry.live2dModel.internalModel.height;
+      const scale = Math.min(
+        entry.layout.width / modelWidth,
+        entry.layout.height / modelHeight
+      );
+      entry.live2dModel.scale.set(scale);
+
+      entry.onLayoutChange?.({ ...entry.layout });
+    }
+  }
+}
+
+let sharedLive2DAtlas: SharedLive2DAtlas | null = null;
+
+function getSharedLive2DAtlas(
+  PIXIMod: typeof import("pixi.js")
+): SharedLive2DAtlas {
+  if (sharedLive2DAtlas) {
+    return sharedLive2DAtlas;
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 1;
+  canvas.height = 1;
+
+  const pixiApp = new PIXIMod.Application<HTMLCanvasElement>({
+    view: canvas,
+    width: 1,
+    height: 1,
+    backgroundAlpha: 0,
+    autoStart: false,
+    antialias: true,
+    preserveDrawingBuffer: false,
+    sharedTicker: false,
+  });
+
+  sharedLive2DAtlas = new SharedLive2DAtlas(pixiApp, canvas);
+  return sharedLive2DAtlas;
 }
 
 export function computeLive2DCanvasSize(
@@ -231,30 +424,15 @@ export async function createLive2DContext(opts: {
     live2dModel.internalModel.height,
     opts.renderScale
   );
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-
-  const pixiApp = new PIXIMod.Application<HTMLCanvasElement>({
-    view: canvas,
-    width: canvas.width,
-    height: canvas.height,
-    backgroundAlpha: 0,
-    autoStart: false,
-    antialias: true,
-    preserveDrawingBuffer: false,
-    sharedTicker: false,
-  });
-
   live2dModel.anchor.set(0.5, 0.5);
-  live2dModel.position.set(canvas.width / 2, canvas.height / 2);
-  const modelW = live2dModel.internalModel.width;
-  const modelH = live2dModel.internalModel.height;
-  const scale = Math.min(canvas.width / modelW, canvas.height / modelH);
-  live2dModel.scale.set(scale);
 
-  pixiApp.stage.addChild(live2dModel);
+  const atlas = getSharedLive2DAtlas(PIXIMod);
+  const atlasHandle = atlas.register(live2dModel, width, height);
 
-  return { pixiApp, live2dModel, canvas };
+  return {
+    pixiApp: atlas.pixiApp,
+    live2dModel,
+    canvas: atlas.canvas,
+    atlasHandle,
+  };
 }
