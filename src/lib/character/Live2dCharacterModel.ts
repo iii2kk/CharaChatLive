@@ -26,7 +26,7 @@ import { computeLive2DCanvasSize, createLive2DContext } from "./live2dPixi";
  * 板ポリの高さ。MMD/VRM と並べたときの身長を合わせる目安値。
  * MMD は 1 unit ≈ 8cm なので 20 unit ≈ 160cm。
  */
-const PLANE_HEIGHT = 20;
+const BASE_PLANE_HEIGHT = 20;
 
 /**
  * セマンティック表情キー → Live2D パラメータ ID マッピング。
@@ -75,6 +75,7 @@ interface Live2dConstructorOptions {
   atlasHandle: Live2DAtlasHandle;
   fileMap: FileMap | null;
   renderScale: number;
+  planeScale: number;
 }
 
 export class Live2dCharacterModel implements CharacterModel {
@@ -101,6 +102,7 @@ export class Live2dCharacterModel implements CharacterModel {
   private group: THREE.Group;
   private fileMap: FileMap | null;
   private renderScale: number;
+  private planeScale: number;
 
   /** 表情コントローラの最後の set 値。Live2D 側は重みを直接持たないため自前で記録 */
   private expressionWeights = new Map<string, number>();
@@ -119,6 +121,7 @@ export class Live2dCharacterModel implements CharacterModel {
     this.atlasHandle = opts.atlasHandle;
     this.fileMap = opts.fileMap;
     this.renderScale = opts.renderScale;
+    this.planeScale = opts.planeScale;
 
     this.displayCanvas = document.createElement("canvas");
     const displayContext = this.displayCanvas.getContext("2d", { alpha: true });
@@ -141,10 +144,10 @@ export class Live2dCharacterModel implements CharacterModel {
     this.displayCanvas.height = initialLayout.height;
     this.currentAtlasLayout = initialLayout;
     this.copyFromAtlas(initialLayout);
-    const planeWidth =
-      PLANE_HEIGHT * (initialLayout.width / initialLayout.height);
+    const planeHeight = this.getPlaneHeight();
+    const planeWidth = planeHeight * (initialLayout.width / initialLayout.height);
     this.planeMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(planeWidth, PLANE_HEIGHT),
+      new THREE.PlaneGeometry(planeWidth, planeHeight),
       new THREE.MeshBasicMaterial({
         map: this.canvasTexture,
         transparent: true,
@@ -152,7 +155,7 @@ export class Live2dCharacterModel implements CharacterModel {
         depthWrite: false,
       })
     );
-    this.planeMesh.position.y = PLANE_HEIGHT / 2; // 足元を原点に
+    this.planeMesh.position.y = planeHeight / 2; // 足元を原点に
 
     this.group = new THREE.Group();
     this.group.name = `live2d:${opts.id}`;
@@ -176,6 +179,7 @@ export class Live2dCharacterModel implements CharacterModel {
     url: string;
     fileMap: FileMap | null;
     renderScale: number;
+    planeScale: number;
   }): Promise<Live2dCharacterModel> {
     const ctx = await createLive2DContext({
       modelUrl: opts.url,
@@ -200,6 +204,7 @@ export class Live2dCharacterModel implements CharacterModel {
       atlasHandle: ctx.atlasHandle,
       fileMap: opts.fileMap,
       renderScale: opts.renderScale,
+      planeScale: opts.planeScale,
     });
   }
 
@@ -242,6 +247,18 @@ export class Live2dCharacterModel implements CharacterModel {
 
     this.renderScale = clamped;
     this.resizeCanvasForCurrentViewport();
+  }
+
+  setDisplayScale(scale: number): void {
+    const clamped = THREE.MathUtils.clamp(scale, 0.4, 2.5);
+    if (Math.abs(this.planeScale - clamped) < 0.001) {
+      return;
+    }
+
+    this.planeScale = clamped;
+    if (this.currentAtlasLayout) {
+      this.applyAtlasLayout(this.currentAtlasLayout);
+    }
   }
 
   dispose(): void {
@@ -379,9 +396,15 @@ export class Live2dCharacterModel implements CharacterModel {
     this.copyFromAtlas(layout);
     this.canvasTexture.needsUpdate = true;
 
-    const planeWidth = PLANE_HEIGHT * (layout.width / layout.height);
+    const planeHeight = this.getPlaneHeight();
+    const planeWidth = planeHeight * (layout.width / layout.height);
     this.planeMesh.geometry.dispose();
-    this.planeMesh.geometry = new THREE.PlaneGeometry(planeWidth, PLANE_HEIGHT);
+    this.planeMesh.geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+    this.planeMesh.position.y = planeHeight / 2;
+  }
+
+  private getPlaneHeight(): number {
+    return BASE_PLANE_HEIGHT * this.planeScale;
   }
 
   private copyFromAtlas(layout: Live2DAtlasLayout): void {

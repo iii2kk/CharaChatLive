@@ -97,6 +97,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         id: modelId,
         name,
         live2dCanvasScale: viewerSettings.live2dCanvasScale,
+        live2dPlaneScale: viewerSettings.live2dPlaneScale,
         initialPhysics: {
           enabled: physics.physicsEnabled,
           gravity: new THREE.Vector3(
@@ -122,7 +123,11 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
           setLoading(false);
         });
     },
-    [syncModels, viewerSettings.live2dCanvasScale]
+    [
+      syncModels,
+      viewerSettings.live2dCanvasScale,
+      viewerSettings.live2dPlaneScale,
+    ]
   );
 
   const loadModelFromPath = useCallback(
@@ -146,6 +151,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         id: modelId,
         name,
         live2dCanvasScale: viewerSettings.live2dCanvasScale,
+        live2dPlaneScale: viewerSettings.live2dPlaneScale,
         initialPhysics: {
           enabled: physics.physicsEnabled,
           gravity: new THREE.Vector3(
@@ -170,7 +176,11 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
           setLoading(false);
         });
     },
-    [syncModels, viewerSettings.live2dCanvasScale]
+    [
+      syncModels,
+      viewerSettings.live2dCanvasScale,
+      viewerSettings.live2dPlaneScale,
+    ]
   );
 
   const loadAnimation = useCallback(
@@ -240,13 +250,18 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
       );
       model.physics.setGravity(gravity);
       model.setRenderScale?.(viewerSettings.live2dCanvasScale);
+      model.setDisplayScale?.(viewerSettings.live2dPlaneScale);
     }
+
+    syncModels((prev) => [...prev]);
   }, [
     viewerSettings.gravityX,
     viewerSettings.gravityY,
     viewerSettings.gravityZ,
     viewerSettings.live2dCanvasScale,
+    viewerSettings.live2dPlaneScale,
     viewerSettings.physicsEnabled,
+    syncModels,
   ]);
 
   // unmount 時にモデルを破棄

@@ -67,6 +67,13 @@ export default function DisplaySettingsWindow({
       step: 0.05,
     },
     {
+      key: "live2dPlaneScale",
+      label: "Live2D サイズ",
+      min: 0.4,
+      max: 2.5,
+      step: 0.01,
+    },
+    {
       key: "gravityX",
       label: "Gravity X",
       min: -100,
@@ -158,6 +165,11 @@ export default function DisplaySettingsWindow({
             {control.key === "live2dCanvasScale" && (
               <span className="text-[10px] text-gray-500">
                 Live2D の offscreen canvas 解像度。高いほど鮮明ですが重くなります。
+              </span>
+            )}
+            {control.key === "live2dPlaneScale" && (
+              <span className="text-[10px] text-gray-500">
+                Live2D 板ポリの表示サイズ。VRM / PMX と見た目の大きさを合わせる調整です。
               </span>
             )}
           </label>
