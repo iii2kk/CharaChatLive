@@ -102,6 +102,7 @@ export class Live2dCharacterModel implements CharacterModel {
   private hasStartedMotion = false;
   private physicsEnabled = true;
   private paused = false;
+  private disposed = false;
 
   constructor(opts: Live2dConstructorOptions) {
     this.id = opts.id;
@@ -179,6 +180,10 @@ export class Live2dCharacterModel implements CharacterModel {
   }
 
   update(delta: number): void {
+    if (this.disposed) {
+      return;
+    }
+
     if (this.paused) {
       // paused 時は PIXI ステージを再描画しない（最後のフレームを維持）
       return;
@@ -213,6 +218,11 @@ export class Live2dCharacterModel implements CharacterModel {
   }
 
   dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+
     try {
       this.live2dModel.destroy({
         children: true,
@@ -313,6 +323,10 @@ export class Live2dCharacterModel implements CharacterModel {
   }
 
   private resizeCanvasForCurrentViewport(): void {
+    if (this.disposed) {
+      return;
+    }
+
     const { width, height } = computeLive2DCanvasSize(
       this.live2dModel.internalModel.width,
       this.live2dModel.internalModel.height,
