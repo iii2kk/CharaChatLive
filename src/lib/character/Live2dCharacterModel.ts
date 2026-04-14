@@ -93,6 +93,9 @@ export class Live2dCharacterModel implements CharacterModel {
   private live2dModel: Live2DModel;
   private canvas: HTMLCanvasElement;
   private atlasHandle: Live2DAtlasHandle;
+  private displayCanvas: HTMLCanvasElement;
+  private displayContext: CanvasRenderingContext2D;
+  private currentAtlasLayout: Live2DAtlasLayout | null = null;
   private canvasTexture: THREE.CanvasTexture;
   private planeMesh: THREE.Mesh;
   private group: THREE.Group;
@@ -117,18 +120,27 @@ export class Live2dCharacterModel implements CharacterModel {
     this.fileMap = opts.fileMap;
     this.renderScale = opts.renderScale;
 
+    this.displayCanvas = document.createElement("canvas");
+    const displayContext = this.displayCanvas.getContext("2d", { alpha: true });
+    if (!displayContext) {
+      throw new Error("Live2D 表示用 canvas の 2D context を取得できませんでした");
+    }
+    this.displayContext = displayContext;
+
     // 初回描画（テクスチャ生成前に 1 フレーム描いておく）
     this.pixiApp.renderer.render(this.pixiApp.stage);
 
-    this.canvasTexture = new THREE.CanvasTexture(opts.canvas);
+    this.canvasTexture = new THREE.CanvasTexture(this.displayCanvas);
     this.canvasTexture.colorSpace = THREE.SRGBColorSpace;
     this.canvasTexture.minFilter = THREE.LinearFilter;
     this.canvasTexture.magFilter = THREE.LinearFilter;
     this.canvasTexture.generateMipmaps = false;
-    this.canvasTexture.wrapS = THREE.ClampToEdgeWrapping;
-    this.canvasTexture.wrapT = THREE.ClampToEdgeWrapping;
 
     const initialLayout = this.atlasHandle.getLayout();
+    this.displayCanvas.width = initialLayout.width;
+    this.displayCanvas.height = initialLayout.height;
+    this.currentAtlasLayout = initialLayout;
+    this.copyFromAtlas(initialLayout);
     const planeWidth =
       PLANE_HEIGHT * (initialLayout.width / initialLayout.height);
     this.planeMesh = new THREE.Mesh(
@@ -216,6 +228,9 @@ export class Live2dCharacterModel implements CharacterModel {
     // true/false に関わらず update を呼ぶ（setEnabled は将来対応）
 
     this.pixiApp.renderer.render(this.pixiApp.stage);
+    if (this.currentAtlasLayout) {
+      this.copyFromAtlas(this.currentAtlasLayout);
+    }
     this.canvasTexture.needsUpdate = true;
   }
 
@@ -352,19 +367,41 @@ export class Live2dCharacterModel implements CharacterModel {
       return;
     }
 
-    this.canvasTexture.repeat.set(
-      layout.width / layout.atlasWidth,
-      layout.height / layout.atlasHeight
-    );
-    this.canvasTexture.offset.set(
-      layout.x / layout.atlasWidth,
-      1 - (layout.y + layout.height) / layout.atlasHeight
-    );
+    if (
+      this.displayCanvas.width !== layout.width ||
+      this.displayCanvas.height !== layout.height
+    ) {
+      this.displayCanvas.width = layout.width;
+      this.displayCanvas.height = layout.height;
+    }
+
+    this.currentAtlasLayout = layout;
+    this.copyFromAtlas(layout);
     this.canvasTexture.needsUpdate = true;
 
     const planeWidth = PLANE_HEIGHT * (layout.width / layout.height);
     this.planeMesh.geometry.dispose();
     this.planeMesh.geometry = new THREE.PlaneGeometry(planeWidth, PLANE_HEIGHT);
+  }
+
+  private copyFromAtlas(layout: Live2DAtlasLayout): void {
+    this.displayContext.clearRect(
+      0,
+      0,
+      this.displayCanvas.width,
+      this.displayCanvas.height
+    );
+    this.displayContext.drawImage(
+      this.canvas,
+      layout.x,
+      layout.y,
+      layout.width,
+      layout.height,
+      0,
+      0,
+      this.displayCanvas.width,
+      this.displayCanvas.height
+    );
   }
 
   /**
