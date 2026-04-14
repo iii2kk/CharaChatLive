@@ -13,6 +13,7 @@ interface CharacterViewerProps {
   activeModel: CharacterModel | null;
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
+  focusRequest: { modelId: string; nonce: number } | null;
   lights: SceneLight[];
   activeLightId: string | null;
   onActiveLightChange: (lightId: string | null) => void;
@@ -85,6 +86,7 @@ export default function CharacterViewer({
   activeModel,
   activeModelId,
   onActiveModelChange,
+  focusRequest,
   lights,
   activeLightId,
   onActiveLightChange,
@@ -105,6 +107,7 @@ export default function CharacterViewer({
           activeModel={activeModel}
           activeModelId={activeModelId}
           onActiveModelChange={onActiveModelChange}
+          focusRequest={focusRequest}
           lights={lights}
           activeLightId={activeLightId}
           onActiveLightChange={onActiveLightChange}

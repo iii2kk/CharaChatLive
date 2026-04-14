@@ -32,6 +32,7 @@ interface FloatingWindowOverlayProps {
   activeModel: CharacterModel | null;
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
+  onFocusModel: (modelId: string) => void;
   onRemoveModel: (modelId: string) => void;
   loading: boolean;
   error: string | null;
@@ -61,6 +62,7 @@ export default function FloatingWindowOverlay({
   activeModel,
   activeModelId,
   onActiveModelChange,
+  onFocusModel,
   onRemoveModel,
   loading,
   error,
@@ -164,6 +166,7 @@ export default function FloatingWindowOverlay({
           loadedModels={loadedModels}
           activeModelId={activeModelId}
           onActiveModelChange={onActiveModelChange}
+          onModelFocus={onFocusModel}
           onRemoveModel={onRemoveModel}
           modelName={modelName}
           animationLoaded={animationLoaded}

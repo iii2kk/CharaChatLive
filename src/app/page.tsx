@@ -30,6 +30,10 @@ export default function Home() {
   const [viewerSettings, setViewerSettings] =
     useState<ViewerSettings>(defaultViewerSettings);
   const [freeCameraEnabled, setFreeCameraEnabled] = useState(false);
+  const [focusRequest, setFocusRequest] = useState<{
+    modelId: string;
+    nonce: number;
+  } | null>(null);
   const [lights, setLights] = useState<SceneLight[]>(() => [
     createDirectionalLight({ name: "Directional Light 1" }),
   ]);
@@ -145,6 +149,14 @@ export default function Home() {
     [clearAnimationUrls, loadAnimation]
   );
 
+  const handleFocusModel = useCallback((modelId: string) => {
+    setActiveModelId(modelId);
+    setFocusRequest({
+      modelId,
+      nonce: performance.now(),
+    });
+  }, [setActiveModelId]);
+
   return (
     <div className="h-full w-full relative">
       <div className="h-full w-full">
@@ -153,6 +165,7 @@ export default function Home() {
           activeModel={activeModel}
           activeModelId={activeModelId}
           onActiveModelChange={setActiveModelId}
+          focusRequest={focusRequest}
           lights={lights}
           activeLightId={activeLightId}
           onActiveLightChange={setActiveLightId}
@@ -170,6 +183,7 @@ export default function Home() {
         activeModel={activeModel}
         activeModelId={activeModelId}
         onActiveModelChange={setActiveModelId}
+        onFocusModel={handleFocusModel}
         onRemoveModel={removeModel}
         loading={loading}
         error={error}

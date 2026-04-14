@@ -7,6 +7,7 @@ interface LoadedModelsWindowProps {
   loadedModels: CharacterModel[];
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
+  onModelFocus: (modelId: string) => void;
   onRemoveModel: (modelId: string) => void;
   modelName: string | null;
   animationLoaded: boolean;
@@ -16,6 +17,7 @@ export default function LoadedModelsWindow({
   loadedModels,
   activeModelId,
   onActiveModelChange,
+  onModelFocus,
   onRemoveModel,
   modelName,
   animationLoaded,
@@ -56,6 +58,7 @@ export default function LoadedModelsWindow({
             <div
               key={loadedModel.id}
               onClick={() => onActiveModelChange(loadedModel.id)}
+              onDoubleClick={() => onModelFocus(loadedModel.id)}
               className={`rounded border px-3 py-2 transition-colors ${
                 isActive
                   ? "border-blue-500 bg-blue-950/40"

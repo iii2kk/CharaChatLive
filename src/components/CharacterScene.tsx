@@ -17,6 +17,7 @@ interface CharacterSceneProps {
   activeModel: CharacterModel | null;
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
+  focusRequest: { modelId: string; nonce: number } | null;
   lights: SceneLight[];
   activeLightId: string | null;
   onActiveLightChange: (lightId: string | null) => void;
@@ -30,6 +31,7 @@ export default function CharacterScene({
   activeModel,
   activeModelId,
   onActiveModelChange,
+  focusRequest,
   lights,
   activeLightId,
   onActiveLightChange,
@@ -46,7 +48,6 @@ export default function CharacterScene({
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null);
   const [isHoveringLightHandle, setIsHoveringLightHandle] = useState(false);
   const previousModelCountRef = useRef(models.length);
-  const previousActiveModelIdRef = useRef<string | null>(activeModelId);
   const previousFreeCameraEnabledRef = useRef(freeCameraEnabled);
   const freeCameraLookTargetRef = useRef<THREE.Vector3 | null>(null);
   const orbitEnabled =
@@ -111,16 +112,12 @@ export default function CharacterScene({
       !(camera instanceof THREE.PerspectiveCamera)
     ) {
       previousModelCountRef.current = models.length;
-      previousActiveModelIdRef.current = activeModelId;
       return;
     }
 
     const shouldRefocus =
-      models.length !== previousModelCountRef.current ||
-      previousActiveModelIdRef.current === null;
-
+      previousModelCountRef.current === 0 && models.length > 0;
     previousModelCountRef.current = models.length;
-    previousActiveModelIdRef.current = activeModelId;
 
     if (!shouldRefocus) {
       return;
@@ -172,13 +169,71 @@ export default function CharacterScene({
     invalidate();
   }, [
     activeModel,
-    activeModelId,
     camera,
     defaultTarget,
     freeCameraEnabled,
     invalidate,
     models.length,
   ]);
+
+  useEffect(() => {
+    if (
+      freeCameraEnabled ||
+      !focusRequest ||
+      !(camera instanceof THREE.PerspectiveCamera)
+    ) {
+      return;
+    }
+
+    const targetModel =
+      models.find((model) => model.id === focusRequest.modelId) ?? null;
+    if (!targetModel) {
+      return;
+    }
+
+    targetModel.object.updateMatrixWorld(true);
+
+    const box = new THREE.Box3().setFromObject(targetModel.object);
+    if (box.isEmpty()) {
+      return;
+    }
+
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const verticalSize = size.y;
+    const horizontalSize = Math.max(size.x, size.z);
+
+    if (verticalSize <= 0 && horizontalSize <= 0) {
+      return;
+    }
+
+    const verticalFov = THREE.MathUtils.degToRad(camera.fov);
+    const horizontalFov =
+      2 * Math.atan(Math.tan(verticalFov / 2) * camera.aspect);
+    const fitHeightDistance =
+      verticalSize / (2 * Math.tan(verticalFov / 2));
+    const fitWidthDistance =
+      horizontalSize / (2 * Math.tan(horizontalFov / 2));
+    const distance = Math.max(fitHeightDistance * 0.78, fitWidthDistance * 0.92);
+
+    const currentTarget = controlsRef.current?.target ?? defaultTarget;
+    const direction = camera.position
+      .clone()
+      .sub(currentTarget)
+      .normalize();
+
+    if (direction.lengthSq() === 0) {
+      direction.set(0, 0.2, 1).normalize();
+    }
+
+    const nextTarget = center.clone().add(new THREE.Vector3(0, size.y * 0.15, 0));
+    const nextPosition = nextTarget.clone().add(direction.multiplyScalar(distance));
+
+    camera.position.copy(nextPosition);
+    controlsRef.current?.target.copy(nextTarget);
+    controlsRef.current?.update();
+    invalidate();
+  }, [camera, defaultTarget, focusRequest, freeCameraEnabled, invalidate, models]);
 
   return (
     <>
