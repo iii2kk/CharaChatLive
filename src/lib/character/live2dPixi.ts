@@ -24,7 +24,7 @@ export interface Live2DRenderContext {
 
 const LIVE2D_CANVAS_RENDER_SCALE = 0.75;
 const LIVE2D_CANVAS_MIN_EDGE = 256;
-const LIVE2D_CANVAS_MAX_EDGE = 1024;
+const LIVE2D_CANVAS_MAX_EDGE = 2048;
 const LIVE2D_VIEWPORT_HEIGHT_USAGE = 0.7;
 
 declare global {
@@ -71,9 +71,10 @@ function applyCubismCoreCompatibilityPatch(): void {
   (modelApi.fromMoc as typeof patchedFromMoc).__live2dCompatPatched = true;
 }
 
-function computeLive2DCanvasSize(
+export function computeLive2DCanvasSize(
   modelWidth: number,
-  modelHeight: number
+  modelHeight: number,
+  renderScale = LIVE2D_CANVAS_RENDER_SCALE
 ): { width: number; height: number } {
   const safeWidth = Math.max(1, modelWidth);
   const safeHeight = Math.max(1, modelHeight);
@@ -84,12 +85,12 @@ function computeLive2DCanvasSize(
   const viewportScale = Math.min(window.devicePixelRatio || 1, 2);
 
   const maxTargetWidth =
-    viewportWidth * viewportScale * LIVE2D_CANVAS_RENDER_SCALE;
+    viewportWidth * viewportScale * renderScale;
   const maxTargetHeight =
     viewportHeight *
     viewportScale *
     LIVE2D_VIEWPORT_HEIGHT_USAGE *
-    LIVE2D_CANVAS_RENDER_SCALE;
+    renderScale;
 
   let width = safeWidth;
   let height = safeHeight;
@@ -199,6 +200,7 @@ async function buildSettingsFromFileMap(
 export async function createLive2DContext(opts: {
   modelUrl: string;
   fileMap: FileMap | null;
+  renderScale?: number;
 }): Promise<Live2DRenderContext> {
   await ensureCubismCoreReady();
 
@@ -226,7 +228,8 @@ export async function createLive2DContext(opts: {
 
   const { width, height } = computeLive2DCanvasSize(
     live2dModel.internalModel.width,
-    live2dModel.internalModel.height
+    live2dModel.internalModel.height,
+    opts.renderScale
   );
 
   const canvas = document.createElement("canvas");

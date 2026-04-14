@@ -106,5 +106,6 @@ export interface CharacterModel {
 
   /** physics + animation + expression 適用 */
   update(delta: number): void;
+  setRenderScale?(scale: number): void;
   dispose(): void;
 }

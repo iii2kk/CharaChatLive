@@ -96,6 +96,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
       createCharacterModel(kind, modelBlobUrl, fileMap, {
         id: modelId,
         name,
+        live2dCanvasScale: viewerSettings.live2dCanvasScale,
         initialPhysics: {
           enabled: physics.physicsEnabled,
           gravity: new THREE.Vector3(
@@ -121,7 +122,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
           setLoading(false);
         });
     },
-    [syncModels]
+    [syncModels, viewerSettings.live2dCanvasScale]
   );
 
   const loadModelFromPath = useCallback(
@@ -144,6 +145,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
       createCharacterModel(kind, modelPath, null, {
         id: modelId,
         name,
+        live2dCanvasScale: viewerSettings.live2dCanvasScale,
         initialPhysics: {
           enabled: physics.physicsEnabled,
           gravity: new THREE.Vector3(
@@ -168,7 +170,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
           setLoading(false);
         });
     },
-    [syncModels]
+    [syncModels, viewerSettings.live2dCanvasScale]
   );
 
   const loadAnimation = useCallback(
@@ -237,11 +239,13 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         }
       );
       model.physics.setGravity(gravity);
+      model.setRenderScale?.(viewerSettings.live2dCanvasScale);
     }
   }, [
     viewerSettings.gravityX,
     viewerSettings.gravityY,
     viewerSettings.gravityZ,
+    viewerSettings.live2dCanvasScale,
     viewerSettings.physicsEnabled,
   ]);
 

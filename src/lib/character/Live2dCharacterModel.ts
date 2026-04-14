@@ -19,7 +19,7 @@ import type {
 } from "./types";
 import { SEMANTIC_EXPRESSION_KEYS } from "./types";
 import { revokeFileMapUrls } from "./urlModifier";
-import { createLive2DContext } from "./live2dPixi";
+import { computeLive2DCanvasSize, createLive2DContext } from "./live2dPixi";
 
 /**
  * 板ポリの高さ。MMD/VRM と並べたときの身長を合わせる目安値。
@@ -72,6 +72,7 @@ interface Live2dConstructorOptions {
   live2dModel: Live2DModel;
   canvas: HTMLCanvasElement;
   fileMap: FileMap | null;
+  renderScale: number;
 }
 
 export class Live2dCharacterModel implements CharacterModel {
@@ -88,10 +89,12 @@ export class Live2dCharacterModel implements CharacterModel {
 
   private pixiApp: PixiApplication<HTMLCanvasElement>;
   private live2dModel: Live2DModel;
+  private canvas: HTMLCanvasElement;
   private canvasTexture: THREE.CanvasTexture;
   private planeMesh: THREE.Mesh;
   private group: THREE.Group;
   private fileMap: FileMap | null;
+  private renderScale: number;
 
   /** 表情コントローラの最後の set 値。Live2D 側は重みを直接持たないため自前で記録 */
   private expressionWeights = new Map<string, number>();
@@ -105,7 +108,9 @@ export class Live2dCharacterModel implements CharacterModel {
     this.name = opts.name;
     this.pixiApp = opts.pixiApp;
     this.live2dModel = opts.live2dModel;
+    this.canvas = opts.canvas;
     this.fileMap = opts.fileMap;
+    this.renderScale = opts.renderScale;
 
     // 初回描画（テクスチャ生成前に 1 フレーム描いておく）
     this.pixiApp.renderer.render(this.pixiApp.stage);
@@ -146,10 +151,12 @@ export class Live2dCharacterModel implements CharacterModel {
     name: string;
     url: string;
     fileMap: FileMap | null;
+    renderScale: number;
   }): Promise<Live2dCharacterModel> {
     const ctx = await createLive2DContext({
       modelUrl: opts.url,
       fileMap: opts.fileMap,
+      renderScale: opts.renderScale,
     });
 
     // if (!isCubism4(ctx.live2dModel)) {
@@ -167,6 +174,7 @@ export class Live2dCharacterModel implements CharacterModel {
       live2dModel: ctx.live2dModel,
       canvas: ctx.canvas,
       fileMap: opts.fileMap,
+      renderScale: opts.renderScale,
     });
   }
 
@@ -192,6 +200,16 @@ export class Live2dCharacterModel implements CharacterModel {
 
     this.pixiApp.renderer.render(this.pixiApp.stage);
     this.canvasTexture.needsUpdate = true;
+  }
+
+  setRenderScale(scale: number): void {
+    const clamped = THREE.MathUtils.clamp(scale, 0.4, 3.0);
+    if (Math.abs(this.renderScale - clamped) < 0.001) {
+      return;
+    }
+
+    this.renderScale = clamped;
+    this.resizeCanvasForCurrentViewport();
   }
 
   dispose(): void {
@@ -292,6 +310,35 @@ export class Live2dCharacterModel implements CharacterModel {
         expressionManager?.resetExpression();
       },
     };
+  }
+
+  private resizeCanvasForCurrentViewport(): void {
+    const { width, height } = computeLive2DCanvasSize(
+      this.live2dModel.internalModel.width,
+      this.live2dModel.internalModel.height,
+      this.renderScale
+    );
+
+    if (this.canvas.width === width && this.canvas.height === height) {
+      return;
+    }
+
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.pixiApp.renderer.resize(width, height);
+
+    this.live2dModel.position.set(width / 2, height / 2);
+    const modelW = this.live2dModel.internalModel.width;
+    const modelH = this.live2dModel.internalModel.height;
+    const scale = Math.min(width / modelW, height / modelH);
+    this.live2dModel.scale.set(scale);
+
+    const planeWidth = PLANE_HEIGHT * (width / height);
+    this.planeMesh.geometry.dispose();
+    this.planeMesh.geometry = new THREE.PlaneGeometry(planeWidth, PLANE_HEIGHT);
+
+    this.pixiApp.renderer.render(this.pixiApp.stage);
+    this.canvasTexture.needsUpdate = true;
   }
 
   /**

@@ -8,6 +8,7 @@ import type { CharacterModel } from "./types";
 export interface CreateCharacterModelOptions {
   id: string;
   name: string;
+  live2dCanvasScale: number;
   /** PMX 用の初期物理設定。VRM では無視される（spring-bone は常時オン） */
   initialPhysics: {
     enabled: boolean;
@@ -36,6 +37,7 @@ export async function createCharacterModel(
       name: options.name,
       url,
       fileMap,
+      renderScale: options.live2dCanvasScale,
     });
   }
 

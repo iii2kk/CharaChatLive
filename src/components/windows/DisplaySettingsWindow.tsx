@@ -60,6 +60,13 @@ export default function DisplaySettingsWindow({
       step: 0.05,
     },
     {
+      key: "live2dCanvasScale",
+      label: "Live2D 解像度",
+      min: 0.4,
+      max: 3.0,
+      step: 0.05,
+    },
+    {
       key: "gravityX",
       label: "Gravity X",
       min: -100,
@@ -148,6 +155,11 @@ export default function DisplaySettingsWindow({
               }
               className="accent-blue-400 disabled:opacity-40"
             />
+            {control.key === "live2dCanvasScale" && (
+              <span className="text-[10px] text-gray-500">
+                Live2D の offscreen canvas 解像度。高いほど鮮明ですが重くなります。
+              </span>
+            )}
           </label>
         ))}
       </div>

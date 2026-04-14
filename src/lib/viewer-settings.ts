@@ -5,6 +5,7 @@ export interface ViewerSettings {
   hemisphereLightGroundColor: string;
   diffuseMultiplier: number;
   emissiveMultiplier: number;
+  live2dCanvasScale: number;
   physicsEnabled: boolean;
   gravityX: number;
   gravityY: number;
@@ -18,6 +19,7 @@ export const defaultViewerSettings: ViewerSettings = {
   hemisphereLightGroundColor: "#444444",
   diffuseMultiplier: 1,
   emissiveMultiplier: 0.0,
+  live2dCanvasScale: 0.75,
   physicsEnabled: true,
   gravityX: 0,
   gravityY: -98,
