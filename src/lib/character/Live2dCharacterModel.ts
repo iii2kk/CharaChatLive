@@ -21,6 +21,10 @@ import { SEMANTIC_EXPRESSION_KEYS } from "./types";
 import { revokeFileMapUrls } from "./urlModifier";
 import type { Live2DAtlasHandle, Live2DAtlasLayout } from "./live2dPixi";
 import { computeLive2DCanvasSize, createLive2DContext } from "./live2dPixi";
+import {
+  beginLive2DProfile,
+  endLive2DProfile,
+} from "./live2dProfile";
 
 /**
  * 板ポリの高さ。MMD/VRM と並べたときの身長を合わせる目安値。
@@ -220,23 +224,37 @@ export class Live2dCharacterModel implements CharacterModel {
 
     // Cubism は ms 単位。Three.js の delta は秒
     const dtMs = delta * 1000;
+    const updateStart = beginLive2DProfile();
 
     // ExpressionMapping で指定されている仮想表情を毎フレーム反映
     // （Live2D のパラメータは毎フレーム上書きされるため）
+    const expressionStart = beginLive2DProfile();
     this.applySemanticParameters();
+    endLive2DProfile("live2d.update.expressions", expressionStart);
 
+    const cubismUpdateStart = beginLive2DProfile();
     this.live2dModel.update(dtMs);
+    endLive2DProfile("live2d.update.cubism", cubismUpdateStart);
 
     // 物理は InternalModel.update の中で動くため、無効化時は
     // update を呼ばずに expressionManager のみ反映する必要があるが
     // pixi-live2d-display では一体化しているため、現状は physicsEnabled が
     // true/false に関わらず update を呼ぶ（setEnabled は将来対応）
 
+    const renderStart = beginLive2DProfile();
     this.pixiApp.renderer.render(this.pixiApp.stage);
+    endLive2DProfile("live2d.update.pixiRender", renderStart);
+
     if (this.currentAtlasLayout) {
+      const atlasCopyStart = beginLive2DProfile();
       this.copyFromAtlas(this.currentAtlasLayout);
+      endLive2DProfile("live2d.update.atlasCopy", atlasCopyStart);
     }
+
+    const textureStart = beginLive2DProfile();
     this.canvasTexture.needsUpdate = true;
+    endLive2DProfile("live2d.update.textureFlag", textureStart);
+    endLive2DProfile("live2d.update.total", updateStart);
   }
 
   setRenderScale(scale: number): void {
@@ -384,6 +402,8 @@ export class Live2dCharacterModel implements CharacterModel {
       return;
     }
 
+    const layoutStart = beginLive2DProfile();
+
     if (
       this.displayCanvas.width !== layout.width ||
       this.displayCanvas.height !== layout.height
@@ -393,14 +413,22 @@ export class Live2dCharacterModel implements CharacterModel {
     }
 
     this.currentAtlasLayout = layout;
+    const atlasCopyStart = beginLive2DProfile();
     this.copyFromAtlas(layout);
+    endLive2DProfile("live2d.layout.atlasCopy", atlasCopyStart);
+
+    const textureStart = beginLive2DProfile();
     this.canvasTexture.needsUpdate = true;
+    endLive2DProfile("live2d.layout.textureFlag", textureStart);
 
     const planeHeight = this.getPlaneHeight();
     const planeWidth = planeHeight * (layout.width / layout.height);
+    const geometryStart = beginLive2DProfile();
     this.planeMesh.geometry.dispose();
     this.planeMesh.geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
     this.planeMesh.position.y = planeHeight / 2;
+    endLive2DProfile("live2d.layout.geometry", geometryStart);
+    endLive2DProfile("live2d.layout.total", layoutStart);
   }
 
   private getPlaneHeight(): number {

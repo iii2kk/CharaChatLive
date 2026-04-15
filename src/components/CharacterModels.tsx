@@ -4,6 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { CharacterModel } from "@/hooks/useModelLoader";
+import {
+  beginLive2DProfile,
+  endLive2DProfile,
+  markLive2DFrame,
+} from "@/lib/character/live2dProfile";
 
 interface CharacterModelsProps {
   models: CharacterModel[];
@@ -103,9 +108,12 @@ export default function CharacterModels({
   };
 
   useFrame((_, delta) => {
+    const frameStart = beginLive2DProfile();
     for (const model of models) {
       model.update(delta);
     }
+    endLive2DProfile("live2d.frame.total", frameStart);
+    markLive2DFrame(models.length);
 
     const highlightedModel =
       models.find((model) => model.id === highlightedModelId) ?? null;
