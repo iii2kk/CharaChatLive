@@ -4,6 +4,10 @@ import type {
   Live2DModel,
 } from "pixi-live2d-display-lipsyncpatch/cubism4";
 import type { FileMap } from "@/lib/file-map";
+import {
+  beginLive2DProfile,
+  endLive2DProfile,
+} from "./live2dProfile";
 
 /**
  * PIXI Application + Live2DModel のセットアップ。
@@ -262,6 +266,16 @@ function getSharedLive2DAtlas(
 
   sharedLive2DAtlas = new SharedLive2DAtlas(pixiApp, canvas);
   return sharedLive2DAtlas;
+}
+
+export function renderSharedLive2DAtlas(): void {
+  if (!sharedLive2DAtlas) {
+    return;
+  }
+
+  const renderStart = beginLive2DProfile();
+  sharedLive2DAtlas.pixiApp.renderer.render(sharedLive2DAtlas.pixiApp.stage);
+  endLive2DProfile("live2d.sharedAtlas.render", renderStart);
 }
 
 export function computeLive2DCanvasSize(

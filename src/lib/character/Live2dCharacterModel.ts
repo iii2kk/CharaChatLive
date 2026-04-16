@@ -240,21 +240,23 @@ export class Live2dCharacterModel implements CharacterModel {
     // update を呼ばずに expressionManager のみ反映する必要があるが
     // pixi-live2d-display では一体化しているため、現状は physicsEnabled が
     // true/false に関わらず update を呼ぶ（setEnabled は将来対応）
+    endLive2DProfile("live2d.update.total", updateStart);
+  }
 
-    const renderStart = beginLive2DProfile();
-    this.pixiApp.renderer.render(this.pixiApp.stage);
-    endLive2DProfile("live2d.update.pixiRender", renderStart);
-
-    if (this.currentAtlasLayout) {
-      const atlasCopyStart = beginLive2DProfile();
-      this.copyFromAtlas(this.currentAtlasLayout);
-      endLive2DProfile("live2d.update.atlasCopy", atlasCopyStart);
+  afterSharedRender(): void {
+    if (this.disposed || !this.currentAtlasLayout) {
+      return;
     }
+
+    const afterRenderStart = beginLive2DProfile();
+    const atlasCopyStart = beginLive2DProfile();
+    this.copyFromAtlas(this.currentAtlasLayout);
+    endLive2DProfile("live2d.update.atlasCopy", atlasCopyStart);
 
     const textureStart = beginLive2DProfile();
     this.canvasTexture.needsUpdate = true;
     endLive2DProfile("live2d.update.textureFlag", textureStart);
-    endLive2DProfile("live2d.update.total", updateStart);
+    endLive2DProfile("live2d.update.afterSharedRender", afterRenderStart);
   }
 
   setRenderScale(scale: number): void {

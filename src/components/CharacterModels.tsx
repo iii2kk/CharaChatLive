@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { CharacterModel } from "@/hooks/useModelLoader";
+import { renderSharedLive2DAtlas } from "@/lib/character/live2dPixi";
 import {
   beginLive2DProfile,
   endLive2DProfile,
@@ -112,6 +113,14 @@ export default function CharacterModels({
     for (const model of models) {
       model.update(delta);
     }
+    const sharedRenderStart = beginLive2DProfile();
+    renderSharedLive2DAtlas();
+    endLive2DProfile("live2d.frame.sharedRender", sharedRenderStart);
+
+    for (const model of models) {
+      model.afterSharedRender?.();
+    }
+
     endLive2DProfile("live2d.frame.total", frameStart);
     markLive2DFrame(models.length);
 
