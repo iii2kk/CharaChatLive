@@ -263,14 +263,17 @@ export class Live2dCharacterModel implements CharacterModel {
     }
     this.disposed = true;
 
+    this.group.removeFromParent();
     this.atlasHandle.setOnLayoutChange(null);
     this.atlasHandle.dispose();
 
     try {
       this.live2dModel.destroy({
         children: true,
-        texture: true,
-        baseTexture: true,
+        // URL ベースで共有される PIXI Texture / BaseTexture をここで破棄すると、
+        // 同じアセットを参照している他の Live2D インスタンスまで真っ白になる。
+        texture: false,
+        baseTexture: false,
       });
     } catch {
       /* ignore */
