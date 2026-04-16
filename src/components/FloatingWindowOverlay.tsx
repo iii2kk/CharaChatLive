@@ -46,6 +46,8 @@ interface FloatingWindowOverlayProps {
   onFreeCameraEnabledChange: (enabled: boolean) => void;
   viewerSettings: ViewerSettings;
   onViewerSettingsChange: React.Dispatch<React.SetStateAction<ViewerSettings>>;
+  onRenderScaleChange: (modelId: string, scale: number) => void;
+  onDisplayScaleChange: (modelId: string, scale: number) => void;
 }
 
 /** Content window IDs (all except menu) */
@@ -76,6 +78,8 @@ export default function FloatingWindowOverlay({
   onFreeCameraEnabledChange,
   viewerSettings,
   onViewerSettingsChange,
+  onRenderScaleChange,
+  onDisplayScaleChange,
 }: FloatingWindowOverlayProps) {
   const {
     windowStates,
@@ -237,6 +241,9 @@ export default function FloatingWindowOverlay({
           viewerSettings={viewerSettings}
           onViewerSettingsChange={onViewerSettingsChange}
           physicsCapability={activeModel?.physics.capability ?? null}
+          activeModel={activeModel}
+          onRenderScaleChange={onRenderScaleChange}
+          onDisplayScaleChange={onDisplayScaleChange}
         />
       </FloatingWindow>
 

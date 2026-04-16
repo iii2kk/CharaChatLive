@@ -104,8 +104,16 @@ export class Live2dCharacterModel implements CharacterModel {
   private planeMesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   private group: THREE.Group;
   private fileMap: FileMap | null;
-  private renderScale: number;
-  private planeScale: number;
+  private _renderScale: number;
+  private _planeScale: number;
+
+  get renderScale(): number {
+    return this._renderScale;
+  }
+
+  get planeScale(): number {
+    return this._planeScale;
+  }
 
   /** 表情コントローラの最後の set 値。Live2D 側は重みを直接持たないため自前で記録 */
   private expressionWeights = new Map<string, number>();
@@ -124,8 +132,8 @@ export class Live2dCharacterModel implements CharacterModel {
     this.sharedTexture = opts.atlasHandle.getSharedTexture();
     this.atlasHandle = opts.atlasHandle;
     this.fileMap = opts.fileMap;
-    this.renderScale = opts.renderScale;
-    this.planeScale = opts.planeScale;
+    this._renderScale = opts.renderScale;
+    this._planeScale = opts.planeScale;
 
     // 初回描画（テクスチャ生成前に 1 フレーム描いておく）
     this.pixiApp.renderer.render(this.pixiApp.stage);
@@ -241,7 +249,7 @@ export class Live2dCharacterModel implements CharacterModel {
       return;
     }
 
-    this.renderScale = clamped;
+    this._renderScale = clamped;
     this.resizeCanvasForCurrentViewport();
   }
 
@@ -251,7 +259,7 @@ export class Live2dCharacterModel implements CharacterModel {
       return;
     }
 
-    this.planeScale = clamped;
+    this._planeScale = clamped;
     if (this.currentAtlasLayout) {
       this.applyAtlasLayout(this.currentAtlasLayout);
     }

@@ -22,6 +22,7 @@ declare global {
 }
 
 function isProfilingEnabled(): boolean {
+  return false;
   if (process.env.NODE_ENV === "production") {
     return false;
   }

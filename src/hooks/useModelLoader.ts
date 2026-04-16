@@ -227,6 +227,28 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
     [activeModelId, getModelById, syncModels]
   );
 
+  const setModelRenderScale = useCallback(
+    (modelId: string, scale: number) => {
+      const model = getModelById(modelId);
+      if (model?.setRenderScale) {
+        model.setRenderScale(scale);
+        syncModels((prev) => [...prev]);
+      }
+    },
+    [getModelById, syncModels]
+  );
+
+  const setModelDisplayScale = useCallback(
+    (modelId: string, scale: number) => {
+      const model = getModelById(modelId);
+      if (model?.setDisplayScale) {
+        model.setDisplayScale(scale);
+        syncModels((prev) => [...prev]);
+      }
+    },
+    [getModelById, syncModels]
+  );
+
   // viewer settings -> モデル物理状態の同期
   useEffect(() => {
     physicsSettingsRef.current = {
@@ -249,8 +271,6 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         }
       );
       model.physics.setGravity(gravity);
-      model.setRenderScale?.(viewerSettings.live2dCanvasScale);
-      model.setDisplayScale?.(viewerSettings.live2dPlaneScale);
     }
 
     syncModels((prev) => [...prev]);
@@ -258,8 +278,6 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
     viewerSettings.gravityX,
     viewerSettings.gravityY,
     viewerSettings.gravityZ,
-    viewerSettings.live2dCanvasScale,
-    viewerSettings.live2dPlaneScale,
     viewerSettings.physicsEnabled,
     syncModels,
   ]);
@@ -291,5 +309,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
     loadModel,
     loadModelFromPath,
     loadAnimation,
+    setModelRenderScale,
+    setModelDisplayScale,
   };
 }

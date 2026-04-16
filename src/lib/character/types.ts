@@ -104,6 +104,11 @@ export interface CharacterModel {
   readonly animation: AnimationController;
   readonly physics: PhysicsController;
 
+  /** Live2D のみ: 現在の offscreen canvas 解像度スケール */
+  readonly renderScale?: number;
+  /** Live2D のみ: 現在の板ポリ表示スケール */
+  readonly planeScale?: number;
+
   /** physics + animation + expression 適用 */
   update(delta: number): void;
   afterSharedRender?(): void;

@@ -51,6 +51,8 @@ export default function Home() {
     loadModel,
     loadModelFromPath,
     loadAnimation,
+    setModelRenderScale,
+    setModelDisplayScale,
   } = useModelLoader(viewerSettings);
   const [animationUrlState, setAnimationUrlState] = useState<string[]>([]);
   const [presetModels, setPresetModels] = useState<ModelEntry[]>([]);
@@ -197,6 +199,8 @@ export default function Home() {
         onFreeCameraEnabledChange={setFreeCameraEnabled}
         viewerSettings={viewerSettings}
         onViewerSettingsChange={setViewerSettings}
+        onRenderScaleChange={setModelRenderScale}
+        onDisplayScaleChange={setModelDisplayScale}
       />
     </div>
   );

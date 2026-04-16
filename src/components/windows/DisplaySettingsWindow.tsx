@@ -5,11 +5,15 @@ import {
   defaultViewerSettings,
   type ViewerSettings,
 } from "@/lib/viewer-settings";
-import type { PhysicsCapability } from "@/lib/character/types";
+import type { CharacterModel, PhysicsCapability } from "@/lib/character/types";
 
 type NumericViewerSettingKey = Exclude<
   keyof ViewerSettings,
-  "physicsEnabled" | "hemisphereLightSkyColor" | "hemisphereLightGroundColor"
+  | "physicsEnabled"
+  | "hemisphereLightSkyColor"
+  | "hemisphereLightGroundColor"
+  | "live2dCanvasScale"
+  | "live2dPlaneScale"
 >;
 
 interface DisplaySettingsWindowProps {
@@ -17,12 +21,19 @@ interface DisplaySettingsWindowProps {
   onViewerSettingsChange: React.Dispatch<React.SetStateAction<ViewerSettings>>;
   /** 現在アクティブなモデルの物理カテゴリ。null はモデル未選択 */
   physicsCapability: PhysicsCapability | null;
+  /** 現在アクティブなモデル */
+  activeModel: CharacterModel | null;
+  onRenderScaleChange: (modelId: string, scale: number) => void;
+  onDisplayScaleChange: (modelId: string, scale: number) => void;
 }
 
 export default function DisplaySettingsWindow({
   viewerSettings,
   onViewerSettingsChange,
   physicsCapability,
+  activeModel,
+  onRenderScaleChange,
+  onDisplayScaleChange,
 }: DisplaySettingsWindowProps) {
   // 重力は両方のモデル種別で適用可能だが、無効時は常に disable
   const gravityDisabled = !viewerSettings.physicsEnabled;
@@ -60,20 +71,6 @@ export default function DisplaySettingsWindow({
       step: 0.05,
     },
     {
-      key: "live2dCanvasScale",
-      label: "Live2D 解像度",
-      min: 0.4,
-      max: 3.0,
-      step: 0.05,
-    },
-    {
-      key: "live2dPlaneScale",
-      label: "Live2D サイズ",
-      min: 0.4,
-      max: 2.5,
-      step: 0.01,
-    },
-    {
       key: "gravityX",
       label: "Gravity X",
       min: -100,
@@ -98,6 +95,8 @@ export default function DisplaySettingsWindow({
       disabled: gravityDisabled,
     },
   ];
+
+  const isLive2d = activeModel?.kind === "live2d";
 
   return (
     <div>
@@ -162,18 +161,67 @@ export default function DisplaySettingsWindow({
               }
               className="accent-blue-400 disabled:opacity-40"
             />
-            {control.key === "live2dCanvasScale" && (
+          </label>
+        ))}
+
+        {/* Per-model Live2D settings */}
+        {isLive2d && activeModel && (
+          <>
+            <div className="mt-2 mb-1 text-xs text-gray-400 border-t border-gray-700 pt-3">
+              Live2D — {activeModel.name}
+            </div>
+            <label className="flex flex-col gap-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-300">Live2D 解像度</span>
+                <span className="text-gray-500">
+                  {(activeModel.renderScale ?? 0.75).toFixed(2)}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0.4}
+                max={3.0}
+                step={0.05}
+                value={activeModel.renderScale ?? 0.75}
+                onChange={(e) =>
+                  onRenderScaleChange(
+                    activeModel.id,
+                    Number(e.currentTarget.value)
+                  )
+                }
+                className="accent-blue-400"
+              />
               <span className="text-[10px] text-gray-500">
                 Live2D の offscreen canvas 解像度。高いほど鮮明ですが重くなります。
               </span>
-            )}
-            {control.key === "live2dPlaneScale" && (
+            </label>
+            <label className="flex flex-col gap-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-300">Live2D サイズ</span>
+                <span className="text-gray-500">
+                  {(activeModel.planeScale ?? 1.17).toFixed(2)}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0.4}
+                max={2.5}
+                step={0.01}
+                value={activeModel.planeScale ?? 1.17}
+                onChange={(e) =>
+                  onDisplayScaleChange(
+                    activeModel.id,
+                    Number(e.currentTarget.value)
+                  )
+                }
+                className="accent-blue-400"
+              />
               <span className="text-[10px] text-gray-500">
                 Live2D 板ポリの表示サイズ。VRM / PMX と見た目の大きさを合わせる調整です。
               </span>
-            )}
-          </label>
-        ))}
+            </label>
+          </>
+        )}
       </div>
     </div>
   );
