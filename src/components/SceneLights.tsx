@@ -83,6 +83,7 @@ export default function SceneLights({
 }: SceneLightsProps) {
   const { camera } = useThree();
   const dragStateRef = useRef<DragState | null>(null);
+  const pendingDragPosition = useRef<[number, number, number] | null>(null);
   const planeHitPoint = useMemo(() => new THREE.Vector3(), []);
   const planeNormal = useMemo(() => new THREE.Vector3(), []);
 
@@ -93,6 +94,22 @@ export default function SceneLights({
     },
     [onDraggingChange, onHoveredHandleChange]
   );
+
+  useFrame(() => {
+    const dragState = dragStateRef.current;
+    const pos = pendingDragPosition.current;
+    if (!dragState || !pos) return;
+    pendingDragPosition.current = null;
+
+    onLightsChange((prev) =>
+      prev.map((light) => {
+        if (light.id !== dragState.lightId) return light;
+        return dragState.target === "position"
+          ? { ...light, position: pos }
+          : { ...light, target: pos };
+      })
+    );
+  });
 
   const beginDrag = (
     event: ThreeEvent<PointerEvent>,
@@ -149,18 +166,7 @@ export default function SceneLights({
     event.stopPropagation();
 
     const nextPosition = planeHitPoint.clone().add(dragState.offset);
-
-    onLightsChange((prev) =>
-      prev.map((light) => {
-        if (light.id !== dragState.lightId) {
-          return light;
-        }
-
-        return dragState.target === "position"
-          ? { ...light, position: toTuple(nextPosition) }
-          : { ...light, target: toTuple(nextPosition) };
-      })
-    );
+    pendingDragPosition.current = toTuple(nextPosition);
   };
 
   const endDrag = (event: ThreeEvent<PointerEvent>) => {
