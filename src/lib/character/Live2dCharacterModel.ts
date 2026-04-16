@@ -97,12 +97,11 @@ export class Live2dCharacterModel implements CharacterModel {
   private pixiApp: PixiApplication<HTMLCanvasElement>;
   private live2dModel: Live2DModel;
   private canvas: HTMLCanvasElement;
+  private sharedTexture: THREE.CanvasTexture;
   private atlasHandle: Live2DAtlasHandle;
-  private displayCanvas: HTMLCanvasElement;
-  private displayContext: CanvasRenderingContext2D;
   private currentAtlasLayout: Live2DAtlasLayout | null = null;
-  private canvasTexture: THREE.CanvasTexture;
-  private planeMesh: THREE.Mesh;
+  private planeMaterial: THREE.MeshBasicMaterial;
+  private planeMesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
   private group: THREE.Group;
   private fileMap: FileMap | null;
   private renderScale: number;
@@ -122,42 +121,29 @@ export class Live2dCharacterModel implements CharacterModel {
     this.pixiApp = opts.pixiApp;
     this.live2dModel = opts.live2dModel;
     this.canvas = opts.canvas;
+    this.sharedTexture = opts.atlasHandle.getSharedTexture();
     this.atlasHandle = opts.atlasHandle;
     this.fileMap = opts.fileMap;
     this.renderScale = opts.renderScale;
     this.planeScale = opts.planeScale;
 
-    this.displayCanvas = document.createElement("canvas");
-    const displayContext = this.displayCanvas.getContext("2d", { alpha: true });
-    if (!displayContext) {
-      throw new Error("Live2D 表示用 canvas の 2D context を取得できませんでした");
-    }
-    this.displayContext = displayContext;
-
     // 初回描画（テクスチャ生成前に 1 フレーム描いておく）
     this.pixiApp.renderer.render(this.pixiApp.stage);
-
-    this.canvasTexture = new THREE.CanvasTexture(this.displayCanvas);
-    this.canvasTexture.colorSpace = THREE.SRGBColorSpace;
-    this.canvasTexture.minFilter = THREE.LinearFilter;
-    this.canvasTexture.magFilter = THREE.LinearFilter;
-    this.canvasTexture.generateMipmaps = false;
+    this.sharedTexture.needsUpdate = true;
 
     const initialLayout = this.atlasHandle.getLayout();
-    this.displayCanvas.width = initialLayout.width;
-    this.displayCanvas.height = initialLayout.height;
     this.currentAtlasLayout = initialLayout;
-    this.copyFromAtlas(initialLayout);
     const planeHeight = this.getPlaneHeight();
     const planeWidth = planeHeight * (initialLayout.width / initialLayout.height);
+    this.planeMaterial = new THREE.MeshBasicMaterial({
+      map: this.sharedTexture,
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
     this.planeMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(planeWidth, planeHeight),
-      new THREE.MeshBasicMaterial({
-        map: this.canvasTexture,
-        transparent: true,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      })
+      this.createPlaneGeometry(planeWidth, planeHeight, initialLayout),
+      this.planeMaterial
     );
     this.planeMesh.position.y = planeHeight / 2; // 足元を原点に
 
@@ -244,19 +230,9 @@ export class Live2dCharacterModel implements CharacterModel {
   }
 
   afterSharedRender(): void {
-    if (this.disposed || !this.currentAtlasLayout) {
+    if (this.disposed) {
       return;
     }
-
-    const afterRenderStart = beginLive2DProfile();
-    const atlasCopyStart = beginLive2DProfile();
-    this.copyFromAtlas(this.currentAtlasLayout);
-    endLive2DProfile("live2d.update.atlasCopy", atlasCopyStart);
-
-    const textureStart = beginLive2DProfile();
-    this.canvasTexture.needsUpdate = true;
-    endLive2DProfile("live2d.update.textureFlag", textureStart);
-    endLive2DProfile("live2d.update.afterSharedRender", afterRenderStart);
   }
 
   setRenderScale(scale: number): void {
@@ -301,11 +277,7 @@ export class Live2dCharacterModel implements CharacterModel {
     }
 
     this.planeMesh.geometry.dispose();
-    const material = this.planeMesh.material;
-    if (material instanceof THREE.Material) {
-      material.dispose();
-    }
-    this.canvasTexture.dispose();
+    this.planeMaterial.dispose();
 
     if (this.fileMap) {
       revokeFileMapUrls(this.fileMap);
@@ -406,28 +378,23 @@ export class Live2dCharacterModel implements CharacterModel {
 
     const layoutStart = beginLive2DProfile();
 
-    if (
-      this.displayCanvas.width !== layout.width ||
-      this.displayCanvas.height !== layout.height
-    ) {
-      this.displayCanvas.width = layout.width;
-      this.displayCanvas.height = layout.height;
-    }
-
     this.currentAtlasLayout = layout;
-    const atlasCopyStart = beginLive2DProfile();
-    this.copyFromAtlas(layout);
-    endLive2DProfile("live2d.layout.atlasCopy", atlasCopyStart);
-
-    const textureStart = beginLive2DProfile();
-    this.canvasTexture.needsUpdate = true;
-    endLive2DProfile("live2d.layout.textureFlag", textureStart);
+    const nextSharedTexture = this.atlasHandle.getSharedTexture();
+    if (this.sharedTexture !== nextSharedTexture) {
+      this.sharedTexture = nextSharedTexture;
+      this.planeMaterial.map = nextSharedTexture;
+      this.planeMaterial.needsUpdate = true;
+    }
 
     const planeHeight = this.getPlaneHeight();
     const planeWidth = planeHeight * (layout.width / layout.height);
     const geometryStart = beginLive2DProfile();
     this.planeMesh.geometry.dispose();
-    this.planeMesh.geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+    this.planeMesh.geometry = this.createPlaneGeometry(
+      planeWidth,
+      planeHeight,
+      layout
+    );
     this.planeMesh.position.y = planeHeight / 2;
     endLive2DProfile("live2d.layout.geometry", geometryStart);
     endLive2DProfile("live2d.layout.total", layoutStart);
@@ -437,24 +404,26 @@ export class Live2dCharacterModel implements CharacterModel {
     return BASE_PLANE_HEIGHT * this.planeScale;
   }
 
-  private copyFromAtlas(layout: Live2DAtlasLayout): void {
-    this.displayContext.clearRect(
-      0,
-      0,
-      this.displayCanvas.width,
-      this.displayCanvas.height
-    );
-    this.displayContext.drawImage(
-      this.canvas,
-      layout.x,
-      layout.y,
-      layout.width,
-      layout.height,
-      0,
-      0,
-      this.displayCanvas.width,
-      this.displayCanvas.height
-    );
+  private createPlaneGeometry(
+    planeWidth: number,
+    planeHeight: number,
+    layout: Live2DAtlasLayout
+  ): THREE.PlaneGeometry {
+    const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight);
+    const uv = geometry.getAttribute("uv");
+
+    const u0 = layout.x / layout.atlasWidth;
+    const u1 = (layout.x + layout.width) / layout.atlasWidth;
+    const v0 = 1 - (layout.y + layout.height) / layout.atlasHeight;
+    const v1 = 1 - layout.y / layout.atlasHeight;
+
+    uv.setXY(0, u0, v1);
+    uv.setXY(1, u1, v1);
+    uv.setXY(2, u0, v0);
+    uv.setXY(3, u1, v0);
+    uv.needsUpdate = true;
+
+    return geometry;
   }
 
   /**
