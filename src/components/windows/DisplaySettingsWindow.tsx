@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   defaultViewerSettings,
   type ViewerSettings,
@@ -27,6 +27,36 @@ interface DisplaySettingsWindowProps {
   onDisplayScaleChange: (modelId: string, scale: number) => void;
 }
 
+/**
+ * モデルの effectiveRenderScale をポーリングして返すフック。
+ * useFrame は Canvas 内でしか使えないため、DOM 側では setInterval で監視する。
+ */
+function useEffectiveRenderScale(model: CharacterModel | null): number {
+  const [value, setValue] = useState(0);
+  const modelRef = useRef(model);
+  modelRef.current = model;
+
+  useEffect(() => {
+    if (!model || model.kind !== "live2d") {
+      setValue(0);
+      return;
+    }
+
+    setValue(model.effectiveRenderScale ?? model.renderScale ?? 0);
+
+    const id = setInterval(() => {
+      const m = modelRef.current;
+      if (!m) return;
+      const next = m.effectiveRenderScale ?? m.renderScale ?? 0;
+      setValue((prev) => (Math.abs(prev - next) > 0.001 ? next : prev));
+    }, 200);
+
+    return () => clearInterval(id);
+  }, [model]);
+
+  return value;
+}
+
 export default function DisplaySettingsWindow({
   viewerSettings,
   onViewerSettingsChange,
@@ -38,6 +68,8 @@ export default function DisplaySettingsWindow({
   // 重力は両方のモデル種別で適用可能だが、無効時は常に disable
   const gravityDisabled = !viewerSettings.physicsEnabled;
   const physicsToggleDisabled = physicsCapability === null;
+  const effectiveScale = useEffectiveRenderScale(activeModel);
+
   const handleViewerSettingChange = useCallback(
     (key: keyof ViewerSettings, value: number) => {
       onViewerSettingsChange((prev) => ({
@@ -172,7 +204,7 @@ export default function DisplaySettingsWindow({
             </div>
             <label className="flex flex-col gap-1">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-300">Live2D 解像度</span>
+                <span className="text-gray-300">Live2D 解像度 (ベース)</span>
                 <span className="text-gray-500">
                   {(activeModel.renderScale ?? 0.75).toFixed(2)}
                 </span>
@@ -191,9 +223,14 @@ export default function DisplaySettingsWindow({
                 }
                 className="accent-blue-400"
               />
-              <span className="text-[10px] text-gray-500">
-                Live2D の offscreen canvas 解像度。高いほど鮮明ですが重くなります。
-              </span>
+              <div className="flex items-center justify-between text-[10px] text-gray-500">
+                <span>
+                  カメラ距離で自動調整されます。
+                </span>
+                <span>
+                  実効: {effectiveScale.toFixed(2)}
+                </span>
+              </div>
             </label>
             <label className="flex flex-col gap-1">
               <div className="flex items-center justify-between text-xs">

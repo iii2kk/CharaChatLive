@@ -106,9 +106,14 @@ export class Live2dCharacterModel implements CharacterModel {
   private fileMap: FileMap | null;
   private _renderScale: number;
   private _planeScale: number;
+  private _distanceScale = 1;
 
   get renderScale(): number {
     return this._renderScale;
+  }
+
+  get effectiveRenderScale(): number {
+    return this._renderScale * this._distanceScale;
   }
 
   get planeScale(): number {
@@ -265,6 +270,16 @@ export class Live2dCharacterModel implements CharacterModel {
     }
   }
 
+  setDistanceScale(factor: number): void {
+    const clamped = THREE.MathUtils.clamp(factor, 0.2, 2.0);
+    if (Math.abs(this._distanceScale - clamped) < 0.01) {
+      return;
+    }
+
+    this._distanceScale = clamped;
+    this.resizeCanvasForCurrentViewport();
+  }
+
   dispose(): void {
     if (this.disposed) {
       return;
@@ -371,7 +386,7 @@ export class Live2dCharacterModel implements CharacterModel {
     const { width, height } = computeLive2DCanvasSize(
       this.live2dModel.internalModel.width,
       this.live2dModel.internalModel.height,
-      this.renderScale
+      this.effectiveRenderScale
     );
     const currentLayout = this.atlasHandle.getLayout();
 

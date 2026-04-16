@@ -104,8 +104,10 @@ export interface CharacterModel {
   readonly animation: AnimationController;
   readonly physics: PhysicsController;
 
-  /** Live2D のみ: 現在の offscreen canvas 解像度スケール */
+  /** Live2D のみ: ベースの offscreen canvas 解像度スケール */
   readonly renderScale?: number;
+  /** Live2D のみ: 距離補正込みの実効解像度スケール */
+  readonly effectiveRenderScale?: number;
   /** Live2D のみ: 現在の板ポリ表示スケール */
   readonly planeScale?: number;
 
@@ -114,5 +116,7 @@ export interface CharacterModel {
   afterSharedRender?(): void;
   setRenderScale?(scale: number): void;
   setDisplayScale?(scale: number): void;
+  /** カメラ距離に応じた解像度係数を設定する (Live2D のみ) */
+  setDistanceScale?(factor: number): void;
   dispose(): void;
 }

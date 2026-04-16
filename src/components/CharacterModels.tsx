@@ -53,6 +53,7 @@ export default function CharacterModels({
   const dragStateRef = useRef<DragState | null>(null);
   const selectionRingRef = useRef<THREE.Mesh | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const modelCenter = useMemo(() => new THREE.Vector3(), []);
   const planeHitPoint = useMemo(() => new THREE.Vector3(), []);
   const footAnchor = useMemo(() => new THREE.Vector3(), []);
   const projectedAnchor = useMemo(() => new THREE.Vector3(), []);
@@ -113,6 +114,19 @@ export default function CharacterModels({
     for (const model of models) {
       model.update(delta);
     }
+
+    // カメラ距離に応じて Live2D 解像度を自動調整
+    for (const model of models) {
+      if (!model.setDistanceScale) continue;
+      // モデルの視覚中心 (足元 + 板ポリ高さの半分) を推定
+      const pos = model.object.position;
+      modelCenter.set(pos.x, pos.y + 10, pos.z);
+      const distance = camera.position.distanceTo(modelCenter);
+      // 基準距離 30 で factor=1.0。近いほど高解像度、遠いほど低解像度
+      const factor = distance > 0 ? 30 / distance : 2.0;
+      model.setDistanceScale(factor);
+    }
+
     const sharedRenderStart = beginLive2DProfile();
     renderSharedLive2DAtlas();
     endLive2DProfile("live2d.frame.sharedRender", sharedRenderStart);
