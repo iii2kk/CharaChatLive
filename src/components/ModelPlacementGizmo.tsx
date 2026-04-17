@@ -4,7 +4,11 @@ import { useEffect, useMemo, useRef, type RefObject } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { CharacterModel } from "@/hooks/useModelLoader";
-import { setModelManualWorldPosition } from "@/lib/character/modelTransform";
+import {
+  refreshModelInteractionMetrics,
+  setModelManualWorldPosition,
+  type ModelInteractionMetrics,
+} from "@/lib/character/modelTransform";
 
 type PointerCaptureTarget = EventTarget & {
   setPointerCapture: (pointerId: number) => void;
@@ -50,68 +54,63 @@ function intersectPlane(
 
 function updateGizmoFromModel(
   model: CharacterModel | null,
+  metrics: ModelInteractionMetrics | null,
   groupRef: RefObject<THREE.Group | null>,
   movePadRef: RefObject<THREE.Mesh | null>,
-  rotateRingRef: RefObject<THREE.Mesh | null>,
-  box: THREE.Box3,
-  center: THREE.Vector3,
-  size: THREE.Vector3
+  rotateRingRef: RefObject<THREE.Mesh | null>
 ) {
-  if (!model || !groupRef.current || !movePadRef.current || !rotateRingRef.current) {
+  if (
+    !model ||
+    !metrics ||
+    !groupRef.current ||
+    !movePadRef.current ||
+    !rotateRingRef.current
+  ) {
     if (groupRef.current) {
       groupRef.current.visible = false;
     }
     return;
   }
 
-  model.object.updateMatrixWorld(true);
-  box.setFromObject(model.object);
-
-  if (box.isEmpty()) {
-    groupRef.current.visible = false;
-    return;
-  }
-
-  box.getCenter(center);
-  box.getSize(size);
-
-  const radius = Math.max(size.x, size.z) * 0.35 + 0.8;
-  const movePadScale = Math.max(0.85, radius * 0.32);
+  const movePadScale = Math.max(0.85, metrics.radius * 0.32);
 
   groupRef.current.visible = true;
-  groupRef.current.position.set(center.x, box.min.y + 0.08, center.z);
+  groupRef.current.position.set(
+    model.object.position.x,
+    model.object.position.y + metrics.footOffsetY + 0.08,
+    model.object.position.z
+  );
   movePadRef.current.scale.setScalar(movePadScale);
-  rotateRingRef.current.scale.setScalar(radius);
+  rotateRingRef.current.scale.setScalar(metrics.radius);
 }
 
 export default function ModelPlacementGizmo({
   model,
 }: ModelPlacementGizmoProps) {
   const modelObjectRef = useRef<THREE.Object3D | null>(null);
+  const interactionMetricsRef = useRef<ModelInteractionMetrics | null>(null);
   const groupRef = useRef<THREE.Group | null>(null);
   const movePadRef = useRef<THREE.Mesh | null>(null);
   const rotateRingRef = useRef<THREE.Mesh | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
-  const box = useMemo(() => new THREE.Box3(), []);
-  const center = useMemo(() => new THREE.Vector3(), []);
-  const size = useMemo(() => new THREE.Vector3(), []);
   const planeHitPoint = useMemo(() => new THREE.Vector3(), []);
   const planeNormal = useMemo(() => new THREE.Vector3(0, 1, 0), []);
 
   useFrame(() => {
     updateGizmoFromModel(
       model,
+      interactionMetricsRef.current,
       groupRef,
       movePadRef,
-      rotateRingRef,
-      box,
-      center,
-      size
+      rotateRingRef
     );
   });
 
   useEffect(() => {
     modelObjectRef.current = model?.object ?? null;
+    interactionMetricsRef.current = model
+      ? refreshModelInteractionMetrics(model.object)
+      : null;
   }, [model]);
 
   useEffect(() => {

@@ -8,7 +8,9 @@ import {
   ensureModelTransformState,
   getModelBasePosition,
   getModelManualOffset,
+  refreshModelInteractionMetrics,
   setModelLayoutOffset,
+  type ModelInteractionMetrics,
 } from "@/lib/character/modelTransform";
 import { renderSharedLive2DAtlas } from "@/lib/character/live2dPixi";
 import {
@@ -36,6 +38,7 @@ export default function CharacterModels({
   const { camera, scene } = useThree();
   const selectionRingRef = useRef<THREE.Mesh | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const highlightedMetricsRef = useRef<ModelInteractionMetrics | null>(null);
   const [highlightedModelId, setHighlightedModelId] = useState<string | null>(
     activeModelId
   );
@@ -81,21 +84,19 @@ export default function CharacterModels({
       return;
     }
 
-    highlightedModel.object.updateMatrixWorld(true);
-
-    const box = new THREE.Box3().setFromObject(highlightedModel.object);
-    if (box.isEmpty()) {
+    const metrics = highlightedMetricsRef.current;
+    if (!metrics) {
       selectionRing.visible = false;
       return;
     }
 
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    const radius = Math.max(size.x, size.z) * 0.35 + 0.8;
-
     selectionRing.visible = true;
-    selectionRing.position.set(center.x, box.min.y + 0.05, center.z);
-    selectionRing.scale.setScalar(radius);
+    selectionRing.position.set(
+      highlightedModel.object.position.x,
+      highlightedModel.object.position.y + metrics.footOffsetY + 0.05,
+      highlightedModel.object.position.z
+    );
+    selectionRing.scale.setScalar(metrics.radius);
   });
 
   useEffect(() => {
@@ -166,6 +167,14 @@ export default function CharacterModels({
   useEffect(() => {
     const activeModel =
       models.find((model) => model.id === highlightedModelId) ?? null;
+
+    if (activeModel) {
+      highlightedMetricsRef.current = refreshModelInteractionMetrics(
+        activeModel.object
+      );
+    } else {
+      highlightedMetricsRef.current = null;
+    }
 
     selectionRingRef.current?.removeFromParent();
     selectionRingRef.current?.geometry.dispose();
