@@ -457,7 +457,7 @@ export default function SceneLights({
 
                     <mesh
                       position={bodyPosition}
-                      rotation-y={yaw}
+                      rotation-y={yaw + Math.PI / 2}
                       onClick={(event: ThreeEvent<MouseEvent>) => {
                         if (!interactionEnabled) {
                           return;

@@ -42,6 +42,14 @@ export default function CharacterScene({
   viewerSettings,
 }: CharacterSceneProps) {
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 10, 0), []);
+  const orbitMouseButtons = useMemo(
+    () => ({
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.PAN,
+      RIGHT: THREE.MOUSE.PAN,
+    }),
+    []
+  );
   const { camera, invalidate } = useThree();
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const [isAltPressed, setIsAltPressed] = useState(false);
@@ -317,15 +325,7 @@ export default function CharacterScene({
         target={[0, 10, 0]}
         minDistance={0}
         maxDistance={Infinity}
-        mouseButtons={
-          interactionMode === "placement"
-            ? {
-                LEFT: THREE.MOUSE.ROTATE,
-                MIDDLE: THREE.MOUSE.PAN,
-                RIGHT: THREE.MOUSE.PAN,
-              }
-            : undefined
-        }
+        mouseButtons={orbitMouseButtons}
         makeDefault
       />
     </>

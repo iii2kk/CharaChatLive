@@ -65,7 +65,9 @@ export default function InteractionModeWindow({
           </>
         ) : (
           <>
-            <p className="mt-1">ドラッグ: 視点移動</p>
+            <p className="mt-1">左ドラッグ: カメラ回転</p>
+            <p className="mt-1">中ドラッグ: パン</p>
+            <p className="mt-1">ホイール: ズーム</p>
           </>
         )}
       </div>
