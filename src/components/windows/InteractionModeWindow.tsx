@@ -53,6 +53,9 @@ export default function InteractionModeWindow({
           <>
             <p className="mt-1">中央ハンドルをドラッグ: 移動</p>
             <p className="mt-1">外周リングをドラッグ: 回転</p>
+            <p className="mt-1">Alt + 左ドラッグ: カメラ回転</p>
+            <p className="mt-1">Alt + 中ドラッグ: パン</p>
+            <p className="mt-1">Alt + ホイール: ズーム</p>
             <p className="mt-1">Esc: 通常カメラに戻る</p>
             {!hasActiveModel ? (
               <p className="mt-2 text-amber-300">
@@ -63,7 +66,6 @@ export default function InteractionModeWindow({
         ) : (
           <>
             <p className="mt-1">ドラッグ: 視点移動</p>
-            <p className="mt-1">ライト本体/target ハンドルをドラッグ</p>
           </>
         )}
       </div>

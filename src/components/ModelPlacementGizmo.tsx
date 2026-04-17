@@ -36,6 +36,7 @@ type DragState = MoveDragState | RotateDragState;
 
 interface ModelPlacementGizmoProps {
   model: CharacterModel | null;
+  onDraggingChange?: (dragging: boolean) => void;
 }
 
 function getPointerCaptureTarget(
@@ -86,6 +87,7 @@ function updateGizmoFromModel(
 
 export default function ModelPlacementGizmo({
   model,
+  onDraggingChange,
 }: ModelPlacementGizmoProps) {
   const modelObjectRef = useRef<THREE.Object3D | null>(null);
   const interactionMetricsRef = useRef<ModelInteractionMetrics | null>(null);
@@ -115,10 +117,22 @@ export default function ModelPlacementGizmo({
 
   useEffect(() => {
     dragStateRef.current = null;
-  }, [model]);
+    onDraggingChange?.(false);
+  }, [model, onDraggingChange]);
+
+  useEffect(
+    () => () => {
+      onDraggingChange?.(false);
+    },
+    [onDraggingChange]
+  );
 
   const beginMoveDrag = (event: ThreeEvent<PointerEvent>) => {
     if (!model || !groupRef.current) {
+      return;
+    }
+
+    if (event.nativeEvent.altKey) {
       return;
     }
 
@@ -138,6 +152,7 @@ export default function ModelPlacementGizmo({
 
     event.stopPropagation();
     target.setPointerCapture(event.pointerId);
+    onDraggingChange?.(true);
 
     dragStateRef.current = {
       kind: "move",
@@ -150,6 +165,10 @@ export default function ModelPlacementGizmo({
 
   const beginRotateDrag = (event: ThreeEvent<PointerEvent>) => {
     if (!model || !groupRef.current) {
+      return;
+    }
+
+    if (event.nativeEvent.altKey) {
       return;
     }
 
@@ -175,6 +194,7 @@ export default function ModelPlacementGizmo({
 
     event.stopPropagation();
     target.setPointerCapture(event.pointerId);
+    onDraggingChange?.(true);
 
     dragStateRef.current = {
       kind: "rotate",
@@ -231,6 +251,7 @@ export default function ModelPlacementGizmo({
       target.releasePointerCapture(event.pointerId);
     }
     dragStateRef.current = null;
+    onDraggingChange?.(false);
   };
 
   if (!model) {

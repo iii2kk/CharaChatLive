@@ -11,19 +11,24 @@ interface SceneLightsProps {
   activeLightId: string | null;
   onActiveLightChange: (lightId: string | null) => void;
   onLightsChange: React.Dispatch<React.SetStateAction<SceneLight[]>>;
+  gizmoVisible: boolean;
   interactionEnabled: boolean;
   onDraggingChange: (dragging: boolean) => void;
   onHoveredHandleChange: (hovered: boolean) => void;
 }
 
-type DragTarget = "position" | "target";
+type DragTarget = "position" | "yaw" | "pitch";
 
 type DragState = {
   lightId: string;
   pointerId: number;
   target: DragTarget;
   plane: THREE.Plane;
-  offset: THREE.Vector3;
+  offset?: THREE.Vector3;
+  startAngle?: number;
+  startYaw?: number;
+  startPitch?: number;
+  horizontalForward?: THREE.Vector3;
 };
 
 type PointerCaptureTarget = EventTarget & {
@@ -37,6 +42,75 @@ function toVector3(value: [number, number, number]) {
 
 function toTuple(value: THREE.Vector3): [number, number, number] {
   return [value.x, value.y, value.z];
+}
+
+function getLightPosition(light: SceneLight) {
+  return toVector3(light.position);
+}
+
+function getLightTarget(light: SceneLight) {
+  return toVector3(light.target);
+}
+
+function getLightDirection(light: SceneLight) {
+  const direction = getLightTarget(light).sub(getLightPosition(light));
+  if (direction.lengthSq() === 0) {
+    return new THREE.Vector3(0, -1, 0);
+  }
+  return direction.normalize();
+}
+
+function getLightDistance(light: SceneLight) {
+  const distance = getLightTarget(light).distanceTo(getLightPosition(light));
+  return distance > 0.001 ? distance : 10;
+}
+
+function getYawFromDirection(direction: THREE.Vector3) {
+  return Math.atan2(direction.x, direction.z);
+}
+
+function getPitchFromDirection(direction: THREE.Vector3) {
+  const horizontalLength = Math.hypot(direction.x, direction.z);
+  return Math.atan2(direction.y, horizontalLength);
+}
+
+function directionFromYawPitch(yaw: number, pitch: number) {
+  const cosPitch = Math.cos(pitch);
+  return new THREE.Vector3(
+    Math.sin(yaw) * cosPitch,
+    Math.sin(pitch),
+    Math.cos(yaw) * cosPitch
+  ).normalize();
+}
+
+function forwardFromYaw(yaw: number) {
+  return new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw)).normalize();
+}
+
+function angleOnHorizontalPlane(point: THREE.Vector3, center: THREE.Vector3) {
+  return Math.atan2(point.x - center.x, point.z - center.z);
+}
+
+function angleOnVerticalPlane(
+  point: THREE.Vector3,
+  center: THREE.Vector3,
+  forward: THREE.Vector3
+) {
+  const relative = point.clone().sub(center);
+  return Math.atan2(relative.y, relative.dot(forward));
+}
+
+function makeTargetFromYawPitch(light: SceneLight, yaw: number, pitch: number) {
+  const position = getLightPosition(light);
+  const distance = getLightDistance(light);
+  const direction = directionFromYawPitch(yaw, pitch);
+  return toTuple(position.add(direction.multiplyScalar(distance)));
+}
+
+function getPointerCaptureTarget(
+  event: ThreeEvent<PointerEvent>
+): PointerCaptureTarget | null {
+  return event.target as PointerCaptureTarget | null;
 }
 
 function DirectionalLightInstance({ light }: { light: SceneLight }) {
@@ -77,15 +151,21 @@ export default function SceneLights({
   activeLightId,
   onActiveLightChange,
   onLightsChange,
+  gizmoVisible,
   interactionEnabled,
   onDraggingChange,
   onHoveredHandleChange,
 }: SceneLightsProps) {
   const { camera } = useThree();
   const dragStateRef = useRef<DragState | null>(null);
-  const pendingDragPosition = useRef<[number, number, number] | null>(null);
+  const pendingDragPosition = useRef<{
+    lightId: string;
+    position?: [number, number, number];
+    target?: [number, number, number];
+  } | null>(null);
   const planeHitPoint = useMemo(() => new THREE.Vector3(), []);
   const planeNormal = useMemo(() => new THREE.Vector3(), []);
+  const up = useMemo(() => new THREE.Vector3(0, 1, 0), []);
 
   useEffect(
     () => () => {
@@ -96,17 +176,24 @@ export default function SceneLights({
   );
 
   useFrame(() => {
-    const dragState = dragStateRef.current;
-    const pos = pendingDragPosition.current;
-    if (!dragState || !pos) return;
+    const pending = pendingDragPosition.current;
+    if (!pending) {
+      return;
+    }
+
     pendingDragPosition.current = null;
 
     onLightsChange((prev) =>
       prev.map((light) => {
-        if (light.id !== dragState.lightId) return light;
-        return dragState.target === "position"
-          ? { ...light, position: pos }
-          : { ...light, target: pos };
+        if (light.id !== pending.lightId) {
+          return light;
+        }
+
+        return {
+          ...light,
+          position: pending.position ?? light.position,
+          target: pending.target ?? light.target,
+        };
       })
     );
   });
@@ -116,40 +203,70 @@ export default function SceneLights({
     light: SceneLight,
     target: DragTarget
   ) => {
-    if (!interactionEnabled) {
+    if (!interactionEnabled || event.nativeEvent.altKey) {
       return;
     }
 
-    const anchor =
-      target === "position" ? toVector3(light.position) : toVector3(light.target);
+    const anchor = getLightPosition(light);
+    const direction = getLightDirection(light);
+    const yaw = getYawFromDirection(direction);
+    const pitch = getPitchFromDirection(direction);
+    const horizontalForward = forwardFromYaw(yaw);
 
-    camera.getWorldDirection(planeNormal);
-
-    const dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(
-      planeNormal,
-      anchor
-    );
+    let dragPlane: THREE.Plane;
+    if (target === "position") {
+      camera.getWorldDirection(planeNormal);
+      dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+        planeNormal,
+        anchor
+      );
+    } else if (target === "yaw") {
+      dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(up, anchor);
+    } else {
+      const right = new THREE.Vector3()
+        .crossVectors(horizontalForward, up)
+        .normalize();
+      dragPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(right, anchor);
+    }
 
     if (!event.ray.intersectPlane(dragPlane, planeHitPoint)) {
       return;
     }
 
     event.stopPropagation();
-    const pointerTarget = event.target as PointerCaptureTarget | null;
+    const pointerTarget = getPointerCaptureTarget(event);
     if (!pointerTarget) {
       return;
     }
+
     pointerTarget.setPointerCapture(event.pointerId);
     onActiveLightChange(light.id);
     onDraggingChange(true);
     onHoveredHandleChange(true);
+
+    if (target === "position") {
+      dragStateRef.current = {
+        lightId: light.id,
+        pointerId: event.pointerId,
+        target,
+        plane: dragPlane,
+        offset: anchor.sub(planeHitPoint.clone()),
+      };
+      return;
+    }
 
     dragStateRef.current = {
       lightId: light.id,
       pointerId: event.pointerId,
       target,
       plane: dragPlane,
-      offset: anchor.sub(planeHitPoint.clone()),
+      startAngle:
+        target === "yaw"
+          ? angleOnHorizontalPlane(planeHitPoint, anchor)
+          : angleOnVerticalPlane(planeHitPoint, anchor, horizontalForward),
+      startYaw: yaw,
+      startPitch: pitch,
+      horizontalForward,
     };
   };
 
@@ -163,10 +280,58 @@ export default function SceneLights({
       return;
     }
 
+    const light = lights.find((entry) => entry.id === dragState.lightId);
+    if (!light) {
+      return;
+    }
+
     event.stopPropagation();
 
-    const nextPosition = planeHitPoint.clone().add(dragState.offset);
-    pendingDragPosition.current = toTuple(nextPosition);
+    if (dragState.target === "position") {
+      const currentPosition = planeHitPoint.clone().add(dragState.offset!);
+      const delta = currentPosition.clone().sub(getLightPosition(light));
+      pendingDragPosition.current = {
+        lightId: light.id,
+        position: toTuple(currentPosition),
+        target: toTuple(getLightTarget(light).add(delta)),
+      };
+      return;
+    }
+
+    if (dragState.target === "yaw") {
+      const currentAngle = angleOnHorizontalPlane(
+        planeHitPoint,
+        getLightPosition(light)
+      );
+      const nextYaw =
+        (dragState.startYaw ?? 0) +
+        (currentAngle - (dragState.startAngle ?? currentAngle));
+      pendingDragPosition.current = {
+        lightId: light.id,
+        target: makeTargetFromYawPitch(
+          light,
+          nextYaw,
+          dragState.startPitch ?? 0
+        ),
+      };
+      return;
+    }
+
+    const currentAngle = angleOnVerticalPlane(
+      planeHitPoint,
+      getLightPosition(light),
+      dragState.horizontalForward ?? forwardFromYaw(dragState.startYaw ?? 0)
+    );
+    const nextPitch = THREE.MathUtils.clamp(
+      (dragState.startPitch ?? 0) +
+        (currentAngle - (dragState.startAngle ?? currentAngle)),
+      -Math.PI / 2 + 0.05,
+      Math.PI / 2 - 0.05
+    );
+    pendingDragPosition.current = {
+      lightId: light.id,
+      target: makeTargetFromYawPitch(light, dragState.startYaw ?? 0, nextPitch),
+    };
   };
 
   const endDrag = (event: ThreeEvent<PointerEvent>) => {
@@ -176,7 +341,7 @@ export default function SceneLights({
     }
 
     event.stopPropagation();
-    const pointerTarget = event.target as PointerCaptureTarget | null;
+    const pointerTarget = getPointerCaptureTarget(event);
     if (!pointerTarget) {
       dragStateRef.current = null;
       onDraggingChange(false);
@@ -195,12 +360,13 @@ export default function SceneLights({
         const isActive = light.id === activeLightId;
         const bodyPosition = light.position;
         const targetPosition = light.target;
+        const yaw = getYawFromDirection(getLightDirection(light));
 
         return (
           <group key={light.id}>
             <DirectionalLightInstance light={light} />
 
-            {light.objectVisible && (
+            {gizmoVisible && light.objectVisible ? (
               <>
                 <Line
                   points={[bodyPosition, targetPosition]}
@@ -244,41 +410,96 @@ export default function SceneLights({
                   <meshBasicMaterial color={isActive ? "#f59e0b" : "#fde68a"} />
                 </mesh>
 
-                <mesh
-                  position={targetPosition}
-                  onClick={(event: ThreeEvent<MouseEvent>) => {
-                    if (!interactionEnabled) {
-                      return;
-                    }
-                    event.stopPropagation();
-                    onActiveLightChange(light.id);
-                  }}
-                  onPointerDown={(event: ThreeEvent<PointerEvent>) =>
-                    beginDrag(event, light, "target")
-                  }
-                  onPointerMove={(event: ThreeEvent<PointerEvent>) =>
-                    updateDrag(event)
-                  }
-                  onPointerUp={(event: ThreeEvent<PointerEvent>) => endDrag(event)}
-                  onPointerCancel={(event: ThreeEvent<PointerEvent>) =>
-                    endDrag(event)
-                  }
-                  onPointerOver={() => {
-                    if (interactionEnabled) {
-                      onHoveredHandleChange(true);
-                    }
-                  }}
-                  onPointerOut={() => {
-                    if (!dragStateRef.current) {
-                      onHoveredHandleChange(false);
-                    }
-                  }}
-                >
-                  <sphereGeometry args={[isActive ? 0.38 : 0.3, 16, 16]} />
-                  <meshBasicMaterial color={isActive ? "#22d3ee" : "#67e8f9"} />
-                </mesh>
+                {isActive ? (
+                  <>
+                    <mesh
+                      position={bodyPosition}
+                      rotation-x={-Math.PI / 2}
+                      onClick={(event: ThreeEvent<MouseEvent>) => {
+                        if (!interactionEnabled) {
+                          return;
+                        }
+                        event.stopPropagation();
+                        onActiveLightChange(light.id);
+                      }}
+                      onPointerDown={(event: ThreeEvent<PointerEvent>) =>
+                        beginDrag(event, light, "yaw")
+                      }
+                      onPointerMove={(event: ThreeEvent<PointerEvent>) =>
+                        updateDrag(event)
+                      }
+                      onPointerUp={(event: ThreeEvent<PointerEvent>) =>
+                        endDrag(event)
+                      }
+                      onPointerCancel={(event: ThreeEvent<PointerEvent>) =>
+                        endDrag(event)
+                      }
+                      onPointerOver={() => {
+                        if (interactionEnabled) {
+                          onHoveredHandleChange(true);
+                        }
+                      }}
+                      onPointerOut={() => {
+                        if (!dragStateRef.current) {
+                          onHoveredHandleChange(false);
+                        }
+                      }}
+                    >
+                      <ringGeometry args={[1.1, 1.32, 64]} />
+                      <meshBasicMaterial
+                        color="#f59e0b"
+                        transparent
+                        opacity={0.85}
+                        depthWrite={false}
+                        side={THREE.DoubleSide}
+                      />
+                    </mesh>
+
+                    <mesh
+                      position={bodyPosition}
+                      rotation-y={yaw}
+                      onClick={(event: ThreeEvent<MouseEvent>) => {
+                        if (!interactionEnabled) {
+                          return;
+                        }
+                        event.stopPropagation();
+                        onActiveLightChange(light.id);
+                      }}
+                      onPointerDown={(event: ThreeEvent<PointerEvent>) =>
+                        beginDrag(event, light, "pitch")
+                      }
+                      onPointerMove={(event: ThreeEvent<PointerEvent>) =>
+                        updateDrag(event)
+                      }
+                      onPointerUp={(event: ThreeEvent<PointerEvent>) =>
+                        endDrag(event)
+                      }
+                      onPointerCancel={(event: ThreeEvent<PointerEvent>) =>
+                        endDrag(event)
+                      }
+                      onPointerOver={() => {
+                        if (interactionEnabled) {
+                          onHoveredHandleChange(true);
+                        }
+                      }}
+                      onPointerOut={() => {
+                        if (!dragStateRef.current) {
+                          onHoveredHandleChange(false);
+                        }
+                      }}
+                    >
+                      <torusGeometry args={[1.55, 0.09, 12, 64]} />
+                      <meshBasicMaterial
+                        color="#22d3ee"
+                        transparent
+                        opacity={0.85}
+                        depthWrite={false}
+                      />
+                    </mesh>
+                  </>
+                ) : null}
               </>
-            )}
+            ) : null}
           </group>
         );
       })}

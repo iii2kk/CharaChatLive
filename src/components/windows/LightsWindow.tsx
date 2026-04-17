@@ -160,7 +160,7 @@ export default function LightsWindow({
             />
           </label>
           <label className="mt-3 flex items-center justify-between rounded bg-gray-800/50 px-3 py-2 text-sm">
-            <span className="text-gray-300">Object Visible</span>
+            <span className="text-gray-300">配置 gizmo 表示</span>
             <input
               type="checkbox"
               checked={activeLight.objectVisible}
@@ -178,7 +178,8 @@ export default function LightsWindow({
             />
           </label>
           <p className="mt-3 text-xs text-gray-500">
-            通常カメラモードで、黄色の球をドラッグすると位置、青い球をドラッグすると向きが変わります
+            配置モードでライト本体をドラッグすると位置、オレンジのリングで yaw、
+            シアンのリングで pitch を調整できます。通常カメラとフリーカメラでは gizmo は表示されません。
           </p>
         </div>
       )}

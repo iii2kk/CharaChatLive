@@ -44,25 +44,51 @@ export default function CharacterScene({
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 10, 0), []);
   const { camera, invalidate } = useThree();
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
+  const [isAltPressed, setIsAltPressed] = useState(false);
+  const [isDraggingPlacementGizmo, setIsDraggingPlacementGizmo] = useState(false);
   const [isDraggingLight, setIsDraggingLight] = useState(false);
   const [isHoveringLightHandle, setIsHoveringLightHandle] = useState(false);
   const previousModelCountRef = useRef(models.length);
   const previousInteractionModeRef = useRef(interactionMode);
   const freeCameraLookTargetRef = useRef<THREE.Vector3 | null>(null);
+  const placementCameraControlsEnabled =
+    interactionMode === "placement" &&
+    isAltPressed &&
+    !isDraggingPlacementGizmo &&
+    !isDraggingLight;
   const orbitEnabled =
-    interactionMode === "orbit" &&
-    !isDraggingLight &&
-    !isHoveringLightHandle;
+    (interactionMode === "orbit" &&
+      !isDraggingLight &&
+      !isHoveringLightHandle) ||
+    placementCameraControlsEnabled;
 
   useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey) {
+        setIsAltPressed(true);
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (!event.altKey) {
+        setIsAltPressed(false);
+      }
+    };
+
     const handleWindowBlur = () => {
+      setIsAltPressed(false);
+      setIsDraggingPlacementGizmo(false);
       setIsDraggingLight(false);
       setIsHoveringLightHandle(false);
     };
 
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("blur", handleWindowBlur);
 
     return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleWindowBlur);
     };
   }, []);
@@ -87,6 +113,8 @@ export default function CharacterScene({
     }
 
     const resetId = window.setTimeout(() => {
+      setIsAltPressed(false);
+      setIsDraggingPlacementGizmo(false);
       setIsDraggingLight(false);
       setIsHoveringLightHandle(false);
     }, 0);
@@ -264,6 +292,7 @@ export default function CharacterScene({
 
       <ModelPlacementGizmo
         model={interactionMode === "placement" ? activeModel : null}
+        onDraggingChange={setIsDraggingPlacementGizmo}
       />
 
       <SceneLights
@@ -271,7 +300,8 @@ export default function CharacterScene({
         activeLightId={activeLightId}
         onActiveLightChange={onActiveLightChange}
         onLightsChange={onLightsChange}
-        interactionEnabled={interactionMode === "orbit"}
+        gizmoVisible={interactionMode === "placement"}
+        interactionEnabled={interactionMode === "placement"}
         onDraggingChange={setIsDraggingLight}
         onHoveredHandleChange={setIsHoveringLightHandle}
       />
@@ -287,6 +317,15 @@ export default function CharacterScene({
         target={[0, 10, 0]}
         minDistance={0}
         maxDistance={Infinity}
+        mouseButtons={
+          interactionMode === "placement"
+            ? {
+                LEFT: THREE.MOUSE.ROTATE,
+                MIDDLE: THREE.MOUSE.PAN,
+                RIGHT: THREE.MOUSE.PAN,
+              }
+            : undefined
+        }
         makeDefault
       />
     </>
