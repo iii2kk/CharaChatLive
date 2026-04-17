@@ -53,7 +53,6 @@ export default function CharacterModels({
   const dragStateRef = useRef<DragState | null>(null);
   const selectionRingRef = useRef<THREE.Mesh | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const modelCenter = useMemo(() => new THREE.Vector3(), []);
   const planeHitPoint = useMemo(() => new THREE.Vector3(), []);
   const footAnchor = useMemo(() => new THREE.Vector3(), []);
   const projectedAnchor = useMemo(() => new THREE.Vector3(), []);
@@ -119,11 +118,11 @@ export default function CharacterModels({
     for (const model of models) {
       if (!model.setDistanceScale) continue;
       // モデルの視覚中心 (足元 + 板ポリ高さの半分) を推定
-      const pos = model.object.position;
-      modelCenter.set(pos.x, pos.y + 10, pos.z);
-      const distance = camera.position.distanceTo(modelCenter);
+      const distance = camera.position.distanceTo(model.object.position);
       // 基準距離 30 で factor=1.0。近いほど高解像度、遠いほど低解像度
-      const factor = distance > 0 ? 30 / distance : 2.0;
+      //const factor = distance > 0 ? 30 / distance : 2.0;
+      const factor = distance > 0 ? 70.0 / (distance + 20.0) : 2.0;
+      //console.log("distanceScale::", factor, distance)
       model.setDistanceScale(factor);
     }
 
