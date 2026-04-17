@@ -8,6 +8,11 @@ export interface SceneDirectionalLight {
   target: [number, number, number];
   visible: boolean;
   objectVisible: boolean;
+  shadowCameraSize: number;
+  shadowCameraNear: number;
+  shadowCameraFar: number;
+  shadowBias: number;
+  shadowNormalBias: number;
 }
 
 export type SceneLight = SceneDirectionalLight;
@@ -29,5 +34,10 @@ export function createDirectionalLight(
     target: partial?.target ?? [0, 10, 0],
     visible: partial?.visible ?? true,
     objectVisible: partial?.objectVisible ?? true,
+    shadowCameraSize: partial?.shadowCameraSize ?? 20,
+    shadowCameraNear: partial?.shadowCameraNear ?? 0.1,
+    shadowCameraFar: partial?.shadowCameraFar ?? 200,
+    shadowBias: partial?.shadowBias ?? -0.0005,
+    shadowNormalBias: partial?.shadowNormalBias ?? 0.02,
   };
 }

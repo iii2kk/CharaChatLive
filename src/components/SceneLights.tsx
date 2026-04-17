@@ -124,6 +124,30 @@ function DirectionalLightInstance({ light }: { light: SceneLight }) {
     }
   }, [light.target, targetObject]);
 
+  useEffect(() => {
+    const directional = lightRef.current;
+    if (!directional) {
+      return;
+    }
+    const cam = directional.shadow.camera;
+    cam.left = -light.shadowCameraSize;
+    cam.right = light.shadowCameraSize;
+    cam.top = light.shadowCameraSize;
+    cam.bottom = -light.shadowCameraSize;
+    cam.near = light.shadowCameraNear;
+    cam.far = light.shadowCameraFar;
+    cam.updateProjectionMatrix();
+    directional.shadow.bias = light.shadowBias;
+    directional.shadow.normalBias = light.shadowNormalBias;
+    directional.shadow.needsUpdate = true;
+  }, [
+    light.shadowCameraSize,
+    light.shadowCameraNear,
+    light.shadowCameraFar,
+    light.shadowBias,
+    light.shadowNormalBias,
+  ]);
+
   useFrame(() => {
     if (lightRef.current) {
       lightRef.current.target.updateMatrixWorld();

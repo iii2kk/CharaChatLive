@@ -181,6 +181,82 @@ export default function LightsWindow({
             配置モードでライト本体をドラッグすると位置、オレンジのリングで yaw、
             シアンのリングで pitch を調整できます。通常カメラとフリーカメラでは gizmo は表示されません。
           </p>
+
+          <div className="mt-4 border-t border-gray-700 pt-3">
+            <p className="mb-2 text-sm text-gray-400">影の設定</p>
+
+            {(
+              [
+                {
+                  key: "shadowCameraSize",
+                  label: "Shadow Camera Size",
+                  min: 1,
+                  max: 100,
+                  step: 1,
+                  digits: 0,
+                },
+                {
+                  key: "shadowCameraNear",
+                  label: "Shadow Camera Near",
+                  min: 0.01,
+                  max: 10,
+                  step: 0.01,
+                  digits: 2,
+                },
+                {
+                  key: "shadowCameraFar",
+                  label: "Shadow Camera Far",
+                  min: 10,
+                  max: 1000,
+                  step: 1,
+                  digits: 0,
+                },
+                {
+                  key: "shadowBias",
+                  label: "Shadow Bias",
+                  min: -0.01,
+                  max: 0.01,
+                  step: 0.0001,
+                  digits: 4,
+                },
+                {
+                  key: "shadowNormalBias",
+                  label: "Shadow Normal Bias",
+                  min: 0,
+                  max: 1,
+                  step: 0.005,
+                  digits: 3,
+                },
+              ] as const
+            ).map(({ key, label, min, max, step, digits }) => (
+              <label key={key} className="mt-3 flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-300">{label}</span>
+                  <span className="text-gray-500">
+                    {activeLight[key].toFixed(digits)}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={min}
+                  max={max}
+                  step={step}
+                  value={activeLight[key]}
+                  onChange={(e) => {
+                    const value = Number(e.currentTarget.value);
+                    onLightsChange((prev) =>
+                      prev.map((light) =>
+                        light.id === activeLight.id
+                          ? { ...light, [key]: value }
+                          : light
+                      )
+                    );
+                  }}
+                  className="accent-amber-400"
+                />
+              </label>
+            ))}
+          </div>
         </div>
       )}
     </div>
