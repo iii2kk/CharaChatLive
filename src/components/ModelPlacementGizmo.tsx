@@ -217,7 +217,7 @@ export default function ModelPlacementGizmo({
       planeHitPoint.x - dragState.center.x
     );
     modelObject.rotation.y =
-      dragState.startRotationY + (currentAngle - dragState.startAngle);
+      dragState.startRotationY - (currentAngle - dragState.startAngle);
   };
 
   const endDrag = (event: ThreeEvent<PointerEvent>) => {
