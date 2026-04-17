@@ -6,10 +6,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { CharacterModel } from "@/hooks/useModelLoader";
+import type { InteractionMode } from "@/lib/interaction-mode";
 import type { SceneLight } from "@/lib/scene-lights";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import FreeCameraControls from "./FreeCameraControls";
 import CharacterModels from "./CharacterModels";
+import ModelPlacementGizmo from "./ModelPlacementGizmo";
 import SceneLights from "./SceneLights";
 
 interface CharacterSceneProps {
@@ -22,7 +24,7 @@ interface CharacterSceneProps {
   activeLightId: string | null;
   onActiveLightChange: (lightId: string | null) => void;
   onLightsChange: React.Dispatch<React.SetStateAction<SceneLight[]>>;
-  freeCameraEnabled: boolean;
+  interactionMode: InteractionMode;
   viewerSettings: ViewerSettings;
 }
 
@@ -36,69 +38,63 @@ export default function CharacterScene({
   activeLightId,
   onActiveLightChange,
   onLightsChange,
-  freeCameraEnabled,
+  interactionMode,
   viewerSettings,
 }: CharacterSceneProps) {
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 10, 0), []);
   const { camera, invalidate } = useThree();
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
-  const [isDraggingModel, setIsDraggingModel] = useState(false);
   const [isDraggingLight, setIsDraggingLight] = useState(false);
-  const [isShiftPressed, setIsShiftPressed] = useState(false);
-  const [hoveredModelId, setHoveredModelId] = useState<string | null>(null);
   const [isHoveringLightHandle, setIsHoveringLightHandle] = useState(false);
   const previousModelCountRef = useRef(models.length);
-  const previousFreeCameraEnabledRef = useRef(freeCameraEnabled);
+  const previousInteractionModeRef = useRef(interactionMode);
   const freeCameraLookTargetRef = useRef<THREE.Vector3 | null>(null);
   const orbitEnabled =
-    !freeCameraEnabled &&
-    !isDraggingModel &&
+    interactionMode === "orbit" &&
     !isDraggingLight &&
-    !isHoveringLightHandle &&
-    !(isShiftPressed && hoveredModelId !== null);
+    !isHoveringLightHandle;
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.shiftKey) {
-        setIsShiftPressed(true);
-      }
-    };
-
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (!event.shiftKey) {
-        setIsShiftPressed(false);
-      }
-    };
-
     const handleWindowBlur = () => {
-      setIsShiftPressed(false);
-      setIsDraggingModel(false);
       setIsDraggingLight(false);
-      setHoveredModelId(null);
       setIsHoveringLightHandle(false);
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
     window.addEventListener("blur", handleWindowBlur);
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleWindowBlur);
     };
   }, []);
 
   useEffect(() => {
-    if (freeCameraEnabled && !previousFreeCameraEnabledRef.current) {
+    if (
+      interactionMode === "freeCamera" &&
+      previousInteractionModeRef.current !== "freeCamera"
+    ) {
       const currentTarget = controlsRef.current?.target.clone();
       if (currentTarget) {
         freeCameraLookTargetRef.current = currentTarget;
       }
     }
 
-    previousFreeCameraEnabledRef.current = freeCameraEnabled;
-  }, [freeCameraEnabled]);
+    previousInteractionModeRef.current = interactionMode;
+  }, [interactionMode]);
+
+  useEffect(() => {
+    if (interactionMode === "orbit") {
+      return;
+    }
+
+    const resetId = window.setTimeout(() => {
+      setIsDraggingLight(false);
+      setIsHoveringLightHandle(false);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(resetId);
+    };
+  }, [interactionMode]);
 
   const getInitialFreeCameraLookTarget = useCallback(
     () => freeCameraLookTargetRef.current,
@@ -107,7 +103,7 @@ export default function CharacterScene({
 
   useEffect(() => {
     if (
-      freeCameraEnabled ||
+      interactionMode === "freeCamera" ||
       !activeModel ||
       !(camera instanceof THREE.PerspectiveCamera)
     ) {
@@ -171,14 +167,14 @@ export default function CharacterScene({
     activeModel,
     camera,
     defaultTarget,
-    freeCameraEnabled,
+    interactionMode,
     invalidate,
     models.length,
   ]);
 
   useEffect(() => {
     if (
-      freeCameraEnabled ||
+      interactionMode === "freeCamera" ||
       !focusRequest ||
       !(camera instanceof THREE.PerspectiveCamera)
     ) {
@@ -233,7 +229,7 @@ export default function CharacterScene({
     controlsRef.current?.target.copy(nextTarget);
     controlsRef.current?.update();
     invalidate();
-  }, [camera, defaultTarget, focusRequest, freeCameraEnabled, invalidate, models]);
+  }, [camera, defaultTarget, focusRequest, interactionMode, invalidate, models]);
 
   return (
     <>
@@ -263,9 +259,11 @@ export default function CharacterScene({
         models={models}
         activeModelId={activeModelId}
         onActiveModelChange={onActiveModelChange}
-        onDraggingChange={setIsDraggingModel}
-        onHoveredModelChange={setHoveredModelId}
-        interactionEnabled={!freeCameraEnabled}
+        selectionEnabled={interactionMode !== "freeCamera"}
+      />
+
+      <ModelPlacementGizmo
+        model={interactionMode === "placement" ? activeModel : null}
       />
 
       <SceneLights
@@ -273,13 +271,13 @@ export default function CharacterScene({
         activeLightId={activeLightId}
         onActiveLightChange={onActiveLightChange}
         onLightsChange={onLightsChange}
-        interactionEnabled={!freeCameraEnabled}
+        interactionEnabled={interactionMode === "orbit"}
         onDraggingChange={setIsDraggingLight}
         onHoveredHandleChange={setIsHoveringLightHandle}
       />
 
       <FreeCameraControls
-        enabled={freeCameraEnabled}
+        enabled={interactionMode === "freeCamera"}
         getInitialLookTarget={getInitialFreeCameraLookTarget}
       />
 

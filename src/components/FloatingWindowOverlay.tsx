@@ -10,6 +10,7 @@ import {
 } from "@/hooks/useFloatingWindows";
 import type { ModelEntry, ModelFile } from "@/types/models";
 import type { CharacterModel } from "@/hooks/useModelLoader";
+import type { InteractionMode } from "@/lib/interaction-mode";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { SceneLight } from "@/lib/scene-lights";
 
@@ -18,7 +19,7 @@ import FileUploadWindow from "@/components/windows/FileUploadWindow";
 import LoadedModelsWindow from "@/components/windows/LoadedModelsWindow";
 import LightsWindow from "@/components/windows/LightsWindow";
 import EnvironmentLightWindow from "@/components/windows/EnvironmentLightWindow";
-import CameraControlsWindow from "@/components/windows/CameraControlsWindow";
+import InteractionModeWindow from "@/components/windows/InteractionModeWindow";
 import DisplaySettingsWindow from "@/components/windows/DisplaySettingsWindow";
 import ExpressionControlWindow from "@/components/windows/ExpressionControlWindow";
 import MenuWindow from "@/components/windows/MenuWindow";
@@ -42,8 +43,8 @@ interface FloatingWindowOverlayProps {
   activeLightId: string | null;
   onActiveLightChange: (lightId: string | null) => void;
   onLightsChange: React.Dispatch<React.SetStateAction<SceneLight[]>>;
-  freeCameraEnabled: boolean;
-  onFreeCameraEnabledChange: (enabled: boolean) => void;
+  interactionMode: InteractionMode;
+  onInteractionModeChange: (mode: InteractionMode) => void;
   viewerSettings: ViewerSettings;
   onViewerSettingsChange: React.Dispatch<React.SetStateAction<ViewerSettings>>;
   onRenderScaleChange: (modelId: string, scale: number) => void;
@@ -74,8 +75,8 @@ export default function FloatingWindowOverlay({
   activeLightId,
   onActiveLightChange,
   onLightsChange,
-  freeCameraEnabled,
-  onFreeCameraEnabledChange,
+  interactionMode,
+  onInteractionModeChange,
   viewerSettings,
   onViewerSettingsChange,
   onRenderScaleChange,
@@ -211,19 +212,20 @@ export default function FloatingWindowOverlay({
         />
       </FloatingWindow>
 
-      {/* Camera Controls */}
+      {/* Interaction Mode */}
       <FloatingWindow
-        title={WINDOW_LABELS.cameraControls}
-        visible={windowStates.cameraControls.visible}
-        zIndex={windowStates.cameraControls.zIndex}
-        position={windowStates.cameraControls.position}
-        onPositionChange={(pos) => setPosition("cameraControls", pos)}
-        onFocus={() => bringToFront("cameraControls")}
-        onClose={() => closeWindow("cameraControls")}
+        title={WINDOW_LABELS.interactionMode}
+        visible={windowStates.interactionMode.visible}
+        zIndex={windowStates.interactionMode.zIndex}
+        position={windowStates.interactionMode.position}
+        onPositionChange={(pos) => setPosition("interactionMode", pos)}
+        onFocus={() => bringToFront("interactionMode")}
+        onClose={() => closeWindow("interactionMode")}
       >
-        <CameraControlsWindow
-          freeCameraEnabled={freeCameraEnabled}
-          onFreeCameraEnabledChange={onFreeCameraEnabledChange}
+        <InteractionModeWindow
+          interactionMode={interactionMode}
+          onInteractionModeChange={onInteractionModeChange}
+          hasActiveModel={activeModel !== null}
         />
       </FloatingWindow>
 

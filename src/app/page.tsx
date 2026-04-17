@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import FloatingWindowOverlay from "@/components/FloatingWindowOverlay";
 import type { ModelEntry, ModelFile } from "@/types/models";
 import { useModelLoader } from "@/hooks/useModelLoader";
+import type { InteractionMode } from "@/lib/interaction-mode";
 import {
   defaultViewerSettings,
   type ViewerSettings,
@@ -29,7 +30,8 @@ const CharacterViewer = dynamic(() => import("@/components/CharacterViewer"), {
 export default function Home() {
   const [viewerSettings, setViewerSettings] =
     useState<ViewerSettings>(defaultViewerSettings);
-  const [freeCameraEnabled, setFreeCameraEnabled] = useState(false);
+  const [interactionMode, setInteractionMode] =
+    useState<InteractionMode>("orbit");
   const [focusRequest, setFocusRequest] = useState<{
     modelId: string;
     nonce: number;
@@ -76,6 +78,23 @@ export default function Home() {
       animationUrlState.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [animationUrlState]);
+
+  useEffect(() => {
+    if (interactionMode !== "placement") {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setInteractionMode("orbit");
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [interactionMode]);
 
   const handlePresetSelected = useCallback(
     (file: ModelFile) => {
@@ -172,7 +191,7 @@ export default function Home() {
           activeLightId={activeLightId}
           onActiveLightChange={setActiveLightId}
           onLightsChange={setLights}
-          freeCameraEnabled={freeCameraEnabled}
+          interactionMode={interactionMode}
           viewerSettings={viewerSettings}
         />
       </div>
@@ -195,8 +214,8 @@ export default function Home() {
         activeLightId={activeLightId}
         onActiveLightChange={setActiveLightId}
         onLightsChange={setLights}
-        freeCameraEnabled={freeCameraEnabled}
-        onFreeCameraEnabledChange={setFreeCameraEnabled}
+        interactionMode={interactionMode}
+        onInteractionModeChange={setInteractionMode}
         viewerSettings={viewerSettings}
         onViewerSettingsChange={setViewerSettings}
         onRenderScaleChange={setModelRenderScale}

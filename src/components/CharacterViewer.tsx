@@ -5,6 +5,7 @@ import { Suspense, useEffect } from "react";
 import * as THREE from "three";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { CharacterModel } from "@/hooks/useModelLoader";
+import type { InteractionMode } from "@/lib/interaction-mode";
 import type { SceneLight } from "@/lib/scene-lights";
 import CharacterScene from "./CharacterScene";
 
@@ -18,7 +19,7 @@ interface CharacterViewerProps {
   activeLightId: string | null;
   onActiveLightChange: (lightId: string | null) => void;
   onLightsChange: React.Dispatch<React.SetStateAction<SceneLight[]>>;
-  freeCameraEnabled: boolean;
+  interactionMode: InteractionMode;
   viewerSettings: ViewerSettings;
 }
 
@@ -91,7 +92,7 @@ export default function CharacterViewer({
   activeLightId,
   onActiveLightChange,
   onLightsChange,
-  freeCameraEnabled,
+  interactionMode,
   viewerSettings,
 }: CharacterViewerProps) {
   return (
@@ -112,7 +113,7 @@ export default function CharacterViewer({
           activeLightId={activeLightId}
           onActiveLightChange={onActiveLightChange}
           onLightsChange={onLightsChange}
-          freeCameraEnabled={freeCameraEnabled}
+          interactionMode={interactionMode}
           viewerSettings={viewerSettings}
         />
       </Suspense>

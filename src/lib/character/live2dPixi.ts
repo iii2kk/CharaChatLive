@@ -348,7 +348,6 @@ export function computeLive2DCanvasSize(
 ): { width: number; height: number } {
   const safeWidth = Math.max(1, modelWidth);
   const safeHeight = Math.max(1, modelHeight);
-  const aspect = safeWidth / safeHeight;
 
   const viewportWidth = window.innerWidth || 1280;
   const viewportHeight = window.innerHeight || 720;

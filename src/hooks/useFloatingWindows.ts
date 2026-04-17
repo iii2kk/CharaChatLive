@@ -17,7 +17,7 @@ export type WindowId =
   | "loadedModels"
   | "lights"
   | "environmentLight"
-  | "cameraControls"
+  | "interactionMode"
   | "displaySettings"
   | "expressionControl";
 
@@ -28,7 +28,7 @@ export const WINDOW_IDS: WindowId[] = [
   "loadedModels",
   "lights",
   "environmentLight",
-  "cameraControls",
+  "interactionMode",
   "displaySettings",
   "expressionControl",
 ];
@@ -40,7 +40,7 @@ export const WINDOW_LABELS: Record<WindowId, string> = {
   loadedModels: "読み込み済みモデル",
   lights: "ライト",
   environmentLight: "環境ライト",
-  cameraControls: "カメラ操作",
+  interactionMode: "操作モード",
   displaySettings: "表示調整",
   expressionControl: "表情コントロール",
 };
@@ -68,7 +68,7 @@ const DEFAULT_POSITIONS: Record<WindowId, { x: number; y: number }> = {
   loadedModels: { x: 16, y: 500 },
   lights: { x: 340, y: 16 },
   environmentLight: { x: 340, y: 300 },
-  cameraControls: { x: 340, y: 500 },
+  interactionMode: { x: 340, y: 500 },
   displaySettings: { x: 660, y: 16 },
   expressionControl: { x: 660, y: 500 },
 };
@@ -80,7 +80,7 @@ const DEFAULT_VISIBLE: Record<WindowId, boolean> = {
   loadedModels: false,
   lights: false,
   environmentLight: false,
-  cameraControls: false,
+  interactionMode: false,
   displaySettings: false,
   expressionControl: false,
 };
@@ -141,13 +141,18 @@ export function useFloatingWindows(config: FloatingWindowLayerConfig = DEFAULT_L
     if (hydratedRef.current) return;
     hydratedRef.current = true;
     const saved = loadFromStorage(config);
-    setWindowStates(saved.windows);
-    setMenuMinimized(saved.menuMinimized);
+    const hydrationTimer = window.setTimeout(() => {
+      setWindowStates(saved.windows);
+      setMenuMinimized(saved.menuMinimized);
+    }, 0);
     const zMap: Record<string, number> = {};
     for (const id of WINDOW_IDS) {
       zMap[id] = saved.windows[id].zIndex;
     }
     nextZIndexRef.current = computeNextZIndex(zMap, config);
+    return () => {
+      window.clearTimeout(hydrationTimer);
+    };
   }, [config]);
 
   // Debounced save to localStorage

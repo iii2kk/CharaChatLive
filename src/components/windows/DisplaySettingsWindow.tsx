@@ -31,27 +31,37 @@ interface DisplaySettingsWindowProps {
  * モデルの effectiveRenderScale をポーリングして返すフック。
  * useFrame は Canvas 内でしか使えないため、DOM 側では setInterval で監視する。
  */
+function readEffectiveRenderScale(model: CharacterModel | null): number {
+  if (!model || model.kind !== "live2d") {
+    return 0;
+  }
+
+  return model.effectiveRenderScale ?? model.renderScale ?? 0;
+}
+
 function useEffectiveRenderScale(model: CharacterModel | null): number {
-  const [value, setValue] = useState(0);
+  const [value, setValue] = useState(() => readEffectiveRenderScale(model));
   const modelRef = useRef(model);
-  modelRef.current = model;
 
   useEffect(() => {
-    if (!model || model.kind !== "live2d") {
-      setValue(0);
-      return;
-    }
+    modelRef.current = model;
+  }, [model]);
 
-    setValue(model.effectiveRenderScale ?? model.renderScale ?? 0);
+  useEffect(() => {
+    const syncTimer = window.setTimeout(() => {
+      setValue(readEffectiveRenderScale(model));
+    }, 0);
 
     const id = setInterval(() => {
       const m = modelRef.current;
-      if (!m) return;
-      const next = m.effectiveRenderScale ?? m.renderScale ?? 0;
+      const next = readEffectiveRenderScale(m);
       setValue((prev) => (Math.abs(prev - next) > 0.001 ? next : prev));
     }, 200);
 
-    return () => clearInterval(id);
+    return () => {
+      window.clearTimeout(syncTimer);
+      clearInterval(id);
+    };
   }, [model]);
 
   return value;

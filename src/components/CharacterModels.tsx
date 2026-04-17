@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { CharacterModel } from "@/hooks/useModelLoader";
+import {
+  ensureModelTransformState,
+  getModelBasePosition,
+  getModelManualOffset,
+  setModelLayoutOffset,
+} from "@/lib/character/modelTransform";
 import { renderSharedLive2DAtlas } from "@/lib/character/live2dPixi";
 import {
   beginLive2DProfile,
@@ -15,94 +21,24 @@ interface CharacterModelsProps {
   models: CharacterModel[];
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
-  onDraggingChange: (dragging: boolean) => void;
-  onHoveredModelChange: (modelId: string | null) => void;
-  interactionEnabled: boolean;
+  selectionEnabled: boolean;
 }
 
 const MODEL_GAP = 2;
 const SELECTION_HIGHLIGHT_DURATION_MS = 2000;
-const basePositions = new WeakMap<THREE.Object3D, THREE.Vector3>();
-const layoutOffsets = new WeakMap<THREE.Object3D, number>();
-const manualOffsets = new WeakMap<THREE.Object3D, THREE.Vector3>();
-
-type DragState = {
-  modelId: string;
-  pointerId: number;
-  plane: THREE.Plane;
-  startHitPoint: THREE.Vector3;
-  startPosition: THREE.Vector3;
-  pointerAnchorOffset: THREE.Vector2;
-  y: number;
-};
-
-type PointerCaptureTarget = EventTarget & {
-  setPointerCapture: (pointerId: number) => void;
-  releasePointerCapture: (pointerId: number) => void;
-};
 
 export default function CharacterModels({
   models,
   activeModelId,
   onActiveModelChange,
-  onDraggingChange,
-  onHoveredModelChange,
-  interactionEnabled,
+  selectionEnabled,
 }: CharacterModelsProps) {
-  const { camera, gl, scene } = useThree();
-  const dragStateRef = useRef<DragState | null>(null);
+  const { camera, scene } = useThree();
   const selectionRingRef = useRef<THREE.Mesh | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const planeHitPoint = useMemo(() => new THREE.Vector3(), []);
-  const footAnchor = useMemo(() => new THREE.Vector3(), []);
-  const projectedAnchor = useMemo(() => new THREE.Vector3(), []);
-  const pointerNdc = useMemo(() => new THREE.Vector2(), []);
-  const pointerAnchorOffset = useMemo(() => new THREE.Vector2(), []);
-  const dragRaycaster = useMemo(() => new THREE.Raycaster(), []);
   const [highlightedModelId, setHighlightedModelId] = useState<string | null>(
     activeModelId
   );
-
-  const intersectDragPlaneFromClientPoint = (
-    clientX: number,
-    clientY: number,
-    plane: THREE.Plane
-  ) => {
-    const rect = gl.domElement.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) {
-      return false;
-    }
-
-    pointerNdc.set(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1
-    );
-    dragRaycaster.setFromCamera(pointerNdc, camera);
-    return dragRaycaster.ray.intersectPlane(plane, planeHitPoint) !== null;
-  };
-
-  const getFootAnchorScreenPoint = (model: CharacterModel) => {
-    model.object.updateMatrixWorld(true);
-
-    const box = new THREE.Box3().setFromObject(model.object);
-    if (box.isEmpty()) {
-      return null;
-    }
-
-    footAnchor.set(
-      (box.min.x + box.max.x) / 2,
-      box.min.y,
-      (box.min.z + box.max.z) / 2
-    );
-
-    const rect = gl.domElement.getBoundingClientRect();
-    projectedAnchor.copy(footAnchor).project(camera);
-
-    return {
-      x: ((projectedAnchor.x + 1) * 0.5) * rect.width + rect.left,
-      y: ((1 - projectedAnchor.y) * 0.5) * rect.height + rect.top,
-    };
-  };
 
   const showSelectionHighlight = (modelId: string | null) => {
     setHighlightedModelId(modelId);
@@ -168,12 +104,7 @@ export default function CharacterModels({
     }
 
     const footprints = models.map((model) => {
-      if (!basePositions.has(model.object)) {
-        basePositions.set(model.object, model.object.position.clone());
-      }
-      if (!manualOffsets.has(model.object)) {
-        manualOffsets.set(model.object, new THREE.Vector3());
-      }
+      ensureModelTransformState(model.object);
 
       model.object.updateMatrixWorld(true);
 
@@ -183,7 +114,7 @@ export default function CharacterModels({
 
       return {
         model,
-        basePosition: basePositions.get(model.object)!,
+        basePosition: getModelBasePosition(model.object),
         width,
       };
     });
@@ -196,8 +127,8 @@ export default function CharacterModels({
 
     for (const { model, basePosition, width } of footprints) {
       const centerX = cursorX + width / 2;
-      const manualOffset = manualOffsets.get(model.object)!;
-      layoutOffsets.set(model.object, centerX);
+      const manualOffset = getModelManualOffset(model.object);
+      setModelLayoutOffset(model.object, centerX);
       model.object.position.set(
         basePosition.x + centerX + manualOffset.x,
         basePosition.y + manualOffset.y,
@@ -281,119 +212,9 @@ export default function CharacterModels({
       if (highlightTimeoutRef.current) {
         clearTimeout(highlightTimeoutRef.current);
       }
-      onDraggingChange(false);
-      onHoveredModelChange(null);
     },
-    [onDraggingChange, onHoveredModelChange]
+    []
   );
-
-  const beginDrag = (event: ThreeEvent<PointerEvent>, model: CharacterModel) => {
-    if (!interactionEnabled) {
-      return;
-    }
-
-    if (!event.nativeEvent.shiftKey) {
-      return;
-    }
-
-    const planeY = model.object.position.y;
-    const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-
-    const footAnchorScreenPoint = getFootAnchorScreenPoint(model);
-    if (!footAnchorScreenPoint) {
-      return;
-    }
-
-    pointerAnchorOffset.set(
-      event.nativeEvent.clientX - footAnchorScreenPoint.x,
-      event.nativeEvent.clientY - footAnchorScreenPoint.y
-    );
-
-    if (
-      !intersectDragPlaneFromClientPoint(
-        event.nativeEvent.clientX - pointerAnchorOffset.x,
-        event.nativeEvent.clientY - pointerAnchorOffset.y,
-        dragPlane
-      )
-    ) {
-      return;
-    }
-
-    event.stopPropagation();
-    const target = event.target as PointerCaptureTarget | null;
-    if (!target) {
-      return;
-    }
-    target.setPointerCapture(event.pointerId);
-    onActiveModelChange(model.id);
-    showSelectionHighlight(model.id);
-    onDraggingChange(true);
-
-    dragStateRef.current = {
-      modelId: model.id,
-      pointerId: event.pointerId,
-      plane: dragPlane,
-      startHitPoint: planeHitPoint.clone(),
-      startPosition: model.object.position.clone(),
-      pointerAnchorOffset: pointerAnchorOffset.clone(),
-      y: planeY,
-    };
-  };
-
-  const updateDrag = (event: ThreeEvent<PointerEvent>, model: CharacterModel) => {
-    const dragState = dragStateRef.current;
-    if (!dragState || dragState.modelId !== model.id) {
-      return;
-    }
-
-    if (
-      !intersectDragPlaneFromClientPoint(
-        event.nativeEvent.clientX - dragState.pointerAnchorOffset.x,
-        event.nativeEvent.clientY - dragState.pointerAnchorOffset.y,
-        dragState.plane
-      )
-    ) {
-      return;
-    }
-
-    event.stopPropagation();
-
-    const delta = planeHitPoint.clone().sub(dragState.startHitPoint);
-    model.object.position.set(
-      dragState.startPosition.x + delta.x,
-      dragState.y,
-      dragState.startPosition.z + delta.z
-    );
-
-    const basePosition = basePositions.get(model.object) ?? new THREE.Vector3();
-    const layoutX = layoutOffsets.get(model.object) ?? 0;
-    manualOffsets.set(
-      model.object,
-      new THREE.Vector3(
-        model.object.position.x - (basePosition.x + layoutX),
-        model.object.position.y - basePosition.y,
-        model.object.position.z - basePosition.z
-      )
-    );
-  };
-
-  const endDrag = (event: ThreeEvent<PointerEvent>) => {
-    const dragState = dragStateRef.current;
-    if (!dragState || dragState.pointerId !== event.pointerId) {
-      return;
-    }
-
-    event.stopPropagation();
-    const target = event.target as PointerCaptureTarget | null;
-    if (!target) {
-      dragStateRef.current = null;
-      onDraggingChange(false);
-      return;
-    }
-    target.releasePointerCapture(event.pointerId);
-    dragStateRef.current = null;
-    onDraggingChange(false);
-  };
 
   return (
     <>
@@ -402,37 +223,12 @@ export default function CharacterModels({
           key={model.id}
           object={model.object}
           onClick={(event: ThreeEvent<MouseEvent>) => {
-            if (!interactionEnabled) {
+            if (!selectionEnabled) {
               return;
             }
             event.stopPropagation();
             onActiveModelChange(model.id);
             showSelectionHighlight(model.id);
-          }}
-          onPointerDown={(event: ThreeEvent<PointerEvent>) =>
-            beginDrag(event, model)
-          }
-          onPointerOver={() => {
-            if (interactionEnabled) {
-              onHoveredModelChange(model.id);
-            }
-          }}
-          onPointerMove={(event: ThreeEvent<PointerEvent>) => {
-            if (interactionEnabled) {
-              onHoveredModelChange(model.id);
-            }
-            updateDrag(event, model);
-          }}
-          onPointerUp={(event: ThreeEvent<PointerEvent>) => endDrag(event)}
-          onPointerMissed={() => {
-            onDraggingChange(false);
-            onHoveredModelChange(null);
-          }}
-          onPointerCancel={(event: ThreeEvent<PointerEvent>) => endDrag(event)}
-          onPointerOut={() => {
-            if (dragStateRef.current?.modelId !== model.id) {
-              onHoveredModelChange(null);
-            }
           }}
         />
       ))}
