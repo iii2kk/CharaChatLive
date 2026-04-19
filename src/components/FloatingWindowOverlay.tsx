@@ -9,12 +9,14 @@ import {
   type WindowId,
 } from "@/hooks/useFloatingWindows";
 import type { ModelEntry, ModelFile } from "@/types/models";
+import type { TexturePresets } from "@/types/textures";
 import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { InteractionMode } from "@/lib/interaction-mode";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { SceneLight } from "@/lib/scene-lights";
 
 import PresetModelsWindow from "@/components/windows/PresetModelsWindow";
+import PresetTexturesWindow from "@/components/windows/PresetTexturesWindow";
 import FileUploadWindow from "@/components/windows/FileUploadWindow";
 import LoadedModelsWindow from "@/components/windows/LoadedModelsWindow";
 import LightsWindow from "@/components/windows/LightsWindow";
@@ -26,6 +28,7 @@ import MenuWindow from "@/components/windows/MenuWindow";
 
 interface FloatingWindowOverlayProps {
   presetModels: ModelEntry[];
+  texturePresets: TexturePresets;
   onPresetSelected: (file: ModelFile) => void;
   onModelFolderSelected: (files: FileList) => void;
   onAnimationFilesSelected: (files: FileList) => void;
@@ -58,6 +61,7 @@ const CONTENT_WINDOW_IDS = WINDOW_IDS.filter(
 
 export default function FloatingWindowOverlay({
   presetModels,
+  texturePresets,
   onPresetSelected,
   onModelFolderSelected,
   onAnimationFilesSelected,
@@ -135,6 +139,23 @@ export default function FloatingWindowOverlay({
           presetModels={presetModels}
           onPresetSelected={onPresetSelected}
           loading={loading}
+        />
+      </FloatingWindow>
+
+      {/* Preset Textures */}
+      <FloatingWindow
+        title={WINDOW_LABELS.presetTextures}
+        visible={windowStates.presetTextures.visible}
+        zIndex={windowStates.presetTextures.zIndex}
+        position={windowStates.presetTextures.position}
+        onPositionChange={(pos) => setPosition("presetTextures", pos)}
+        onFocus={() => bringToFront("presetTextures")}
+        onClose={() => closeWindow("presetTextures")}
+      >
+        <PresetTexturesWindow
+          textures={texturePresets}
+          viewerSettings={viewerSettings}
+          onViewerSettingsChange={onViewerSettingsChange}
         />
       </FloatingWindow>
 

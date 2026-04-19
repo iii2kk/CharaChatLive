@@ -14,6 +14,11 @@ type NumericViewerSettingKey = Exclude<
   | "hemisphereLightGroundColor"
   | "live2dCanvasScale"
   | "live2dPlaneScale"
+  | "showGrid"
+  | "groundTextureUrl"
+  | "backgroundTextureUrl"
+  | "backgroundIsEquirect"
+  | "backgroundColor"
 >;
 
 interface DisplaySettingsWindowProps {

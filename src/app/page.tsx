@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import FloatingWindowOverlay from "@/components/FloatingWindowOverlay";
 import type { ModelEntry, ModelFile } from "@/types/models";
+import type { TexturePresets } from "@/types/textures";
 import { useModelLoader } from "@/hooks/useModelLoader";
 import type { InteractionMode } from "@/lib/interaction-mode";
 import {
@@ -58,6 +59,10 @@ export default function Home() {
   } = useModelLoader(viewerSettings);
   const [animationUrlState, setAnimationUrlState] = useState<string[]>([]);
   const [presetModels, setPresetModels] = useState<ModelEntry[]>([]);
+  const [texturePresets, setTexturePresets] = useState<TexturePresets>({
+    ground: [],
+    background: [],
+  });
 
   const clearAnimationUrls = useCallback(() => {
     setAnimationUrlState((prev) => {
@@ -70,6 +75,10 @@ export default function Home() {
     fetch("/api/models")
       .then((res) => res.json())
       .then((data: ModelEntry[]) => setPresetModels(data))
+      .catch(() => {});
+    fetch("/api/textures")
+      .then((res) => res.json())
+      .then((data: TexturePresets) => setTexturePresets(data))
       .catch(() => {});
   }, []);
 
@@ -197,6 +206,7 @@ export default function Home() {
       </div>
       <FloatingWindowOverlay
         presetModels={presetModels}
+        texturePresets={texturePresets}
         onPresetSelected={handlePresetSelected}
         onModelFolderSelected={handleModelFolderSelected}
         onAnimationFilesSelected={handleAnimationFilesSelected}

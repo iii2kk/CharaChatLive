@@ -1,6 +1,6 @@
 "use client";
 
-import { OrbitControls, Grid } from "@react-three/drei";
+import { OrbitControls } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -13,6 +13,7 @@ import FreeCameraControls from "./FreeCameraControls";
 import CharacterModels from "./CharacterModels";
 import ModelPlacementGizmo from "./ModelPlacementGizmo";
 import SceneLights from "./SceneLights";
+import SceneEnvironment from "./SceneEnvironment";
 
 interface CharacterSceneProps {
   models: CharacterModel[];
@@ -278,18 +279,7 @@ export default function CharacterScene({
         ]}
       />
 
-      <Grid
-        args={[50, 50]}
-        position={[0, 0, 0]}
-        cellSize={1}
-        cellThickness={0.5}
-        cellColor="#6f6f6f"
-        sectionSize={5}
-        sectionThickness={1}
-        sectionColor="#9d4b4b"
-        fadeDistance={50}
-        infiniteGrid
-      />
+      <SceneEnvironment viewerSettings={viewerSettings} />
 
       <CharacterModels
         models={models}

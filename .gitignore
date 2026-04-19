@@ -44,3 +44,6 @@ public/models/
 public/motions/
 plan/
 vendor/
+public/textures/backgrounds/
+public/textures/ground/
+logs/

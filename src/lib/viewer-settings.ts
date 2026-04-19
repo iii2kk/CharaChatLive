@@ -12,6 +12,13 @@ export interface ViewerSettings {
   gravityX: number;
   gravityY: number;
   gravityZ: number;
+  showGrid: boolean;
+  groundTextureUrl: string | null;
+  groundTextureRepeat: number;
+  groundSize: number;
+  backgroundTextureUrl: string | null;
+  backgroundIsEquirect: boolean;
+  backgroundColor: string;
 }
 
 export const defaultViewerSettings: ViewerSettings = {
@@ -28,4 +35,11 @@ export const defaultViewerSettings: ViewerSettings = {
   gravityX: 0,
   gravityY: -98,
   gravityZ: 0,
+  showGrid: true,
+  groundTextureUrl: null,
+  groundTextureRepeat: 10,
+  groundSize: 50,
+  backgroundTextureUrl: null,
+  backgroundIsEquirect: true,
+  backgroundColor: "#1a1a2e",
 };
