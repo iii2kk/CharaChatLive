@@ -7,6 +7,7 @@ export interface ViewerSettings {
   emissiveMultiplier: number;
   live2dCanvasScale: number;
   live2dPlaneScale: number;
+  live2dRenderFps: number;
   physicsEnabled: boolean;
   gravityX: number;
   gravityY: number;
@@ -22,6 +23,7 @@ export const defaultViewerSettings: ViewerSettings = {
   emissiveMultiplier: 0.0,
   live2dCanvasScale: 0.75,
   live2dPlaneScale: 1.17,
+  live2dRenderFps: 60,
   physicsEnabled: true,
   gravityX: 0,
   gravityY: -98,

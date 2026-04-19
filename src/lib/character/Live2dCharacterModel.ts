@@ -127,6 +127,7 @@ export class Live2dCharacterModel implements CharacterModel {
   private physicsEnabled = true;
   private paused = false;
   private disposed = false;
+  private needsSharedRender = true;
 
   constructor(opts: Live2dConstructorOptions) {
     this.id = opts.id;
@@ -246,6 +247,12 @@ export class Live2dCharacterModel implements CharacterModel {
     if (this.disposed) {
       return;
     }
+
+    this.needsSharedRender = false;
+  }
+
+  consumeSharedRenderRequest(): boolean {
+    return this.needsSharedRender;
   }
 
   setRenderScale(scale: number): void {
@@ -394,6 +401,7 @@ export class Live2dCharacterModel implements CharacterModel {
       return;
     }
 
+    this.needsSharedRender = true;
     this.atlasHandle.updateSize(width, height);
   }
 
@@ -411,6 +419,7 @@ export class Live2dCharacterModel implements CharacterModel {
       this.planeMaterial.map = nextSharedTexture;
       this.planeMaterial.needsUpdate = true;
     }
+    this.needsSharedRender = true;
 
     const planeHeight = this.getPlaneHeight();
     const planeWidth = planeHeight * (layout.width / layout.height);

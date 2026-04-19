@@ -114,6 +114,7 @@ export interface CharacterModel {
   /** physics + animation + expression 適用 */
   update(delta: number): void;
   afterSharedRender?(): void;
+  consumeSharedRenderRequest?(): boolean;
   setRenderScale?(scale: number): void;
   setDisplayScale?(scale: number): void;
   /** カメラ距離に応じた解像度係数を設定する (Live2D のみ) */

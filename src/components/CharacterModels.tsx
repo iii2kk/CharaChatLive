@@ -18,12 +18,14 @@ import {
   endLive2DProfile,
   markLive2DFrame,
 } from "@/lib/character/live2dProfile";
+import type { ViewerSettings } from "@/lib/viewer-settings";
 
 interface CharacterModelsProps {
   models: CharacterModel[];
   activeModelId: string | null;
   onActiveModelChange: (modelId: string) => void;
   selectionEnabled: boolean;
+  viewerSettings: ViewerSettings;
 }
 
 const MODEL_GAP = 2;
@@ -34,11 +36,13 @@ export default function CharacterModels({
   activeModelId,
   onActiveModelChange,
   selectionEnabled,
+  viewerSettings,
 }: CharacterModelsProps) {
   const { camera, scene } = useThree();
   const selectionRingRef = useRef<THREE.Mesh | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightedMetricsRef = useRef<ModelInteractionMetrics | null>(null);
+  const live2dRenderAccumulatorMsRef = useRef(0);
   const [highlightedModelId, setHighlightedModelId] = useState<string | null>(
     activeModelId
   );
@@ -49,6 +53,7 @@ export default function CharacterModels({
 
   useFrame((_, delta) => {
     const frameStart = beginLive2DProfile();
+    const deltaMs = delta * 1000;
     for (const model of models) {
       model.update(delta);
     }
@@ -65,12 +70,36 @@ export default function CharacterModels({
       model.setDistanceScale(factor);
     }
 
-    const sharedRenderStart = beginLive2DProfile();
-    renderSharedLive2DAtlas();
-    endLive2DProfile("live2d.frame.sharedRender", sharedRenderStart);
+    const hasLive2DModel = models.some((model) => model.kind === "live2d");
+    const live2dRenderFps = THREE.MathUtils.clamp(
+      viewerSettings.live2dRenderFps,
+      1,
+      60
+    );
+    if (!hasLive2DModel) {
+      live2dRenderAccumulatorMsRef.current = 0;
+    } else {
+      live2dRenderAccumulatorMsRef.current += deltaMs;
+      const renderIntervalMs = 1000 / live2dRenderFps;
+      const shouldForceSharedRender = models.some((model) =>
+        model.consumeSharedRenderRequest?.()
+      );
+      if (
+        shouldForceSharedRender ||
+        live2dRenderAccumulatorMsRef.current >= renderIntervalMs
+      ) {
+        live2dRenderAccumulatorMsRef.current = shouldForceSharedRender
+          ? 0
+          : live2dRenderAccumulatorMsRef.current % renderIntervalMs;
 
-    for (const model of models) {
-      model.afterSharedRender?.();
+        const sharedRenderStart = beginLive2DProfile();
+        renderSharedLive2DAtlas();
+        endLive2DProfile("live2d.frame.sharedRender", sharedRenderStart);
+
+        for (const model of models) {
+          model.afterSharedRender?.();
+        }
+      }
     }
 
     endLive2DProfile("live2d.frame.total", frameStart);

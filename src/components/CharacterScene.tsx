@@ -296,6 +296,7 @@ export default function CharacterScene({
         activeModelId={activeModelId}
         onActiveModelChange={onActiveModelChange}
         selectionEnabled={interactionMode !== "freeCamera"}
+        viewerSettings={viewerSettings}
       />
 
       <ModelPlacementGizmo

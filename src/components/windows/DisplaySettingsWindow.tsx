@@ -267,6 +267,31 @@ export default function DisplaySettingsWindow({
                 Live2D 板ポリの表示サイズ。VRM / PMX と見た目の大きさを合わせる調整です。
               </span>
             </label>
+            <label className="flex flex-col gap-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-300">Live2D 描画 FPS</span>
+                <span className="text-gray-500">
+                  {viewerSettings.live2dRenderFps.toFixed(0)}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={60}
+                step={1}
+                value={viewerSettings.live2dRenderFps}
+                onChange={(e) =>
+                  handleViewerSettingChange(
+                    "live2dRenderFps",
+                    Number(e.currentTarget.value)
+                  )
+                }
+                className="accent-blue-400"
+              />
+              <span className="text-[10px] text-gray-500">
+                Live2D atlas の再描画頻度。低いほど軽くなります。
+              </span>
+            </label>
           </>
         )}
       </div>
