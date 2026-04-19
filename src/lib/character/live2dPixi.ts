@@ -142,8 +142,6 @@ class SharedLive2DAtlasHandle implements Live2DAtlasHandle {
 class SharedLive2DAtlas {
   readonly pixiApp: PIXI.Application<HTMLCanvasElement>;
   readonly canvas: HTMLCanvasElement;
-  readonly displayCanvas: HTMLCanvasElement;
-  readonly displayContext: CanvasRenderingContext2D;
   texture: THREE.CanvasTexture;
   private readonly entries: SharedAtlasEntry[] = [];
   private readonly slotPadding = 8;
@@ -154,17 +152,11 @@ class SharedLive2DAtlas {
   ) {
     this.pixiApp = pixiApp;
     this.canvas = canvas;
-    this.displayCanvas = document.createElement("canvas");
-    const displayContext = this.displayCanvas.getContext("2d", { alpha: true });
-    if (!displayContext) {
-      throw new Error("Live2D atlas 用 canvas の 2D context を取得できませんでした");
-    }
-    this.displayContext = displayContext;
     this.texture = this.createTexture();
   }
 
   private createTexture(): THREE.CanvasTexture {
-    const texture = new THREE.CanvasTexture(this.displayCanvas);
+    const texture = new THREE.CanvasTexture(this.canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
@@ -244,17 +236,14 @@ class SharedLive2DAtlas {
     }
 
     const atlasWidth = Math.max(1, cursorX - this.slotPadding);
+    const previousWidth = this.canvas.width;
+    const previousHeight = this.canvas.height;
     this.pixiApp.renderer.resize(atlasWidth, atlasHeight);
-    let textureRecreated = false;
-    if (
-      this.displayCanvas.width !== atlasWidth ||
-      this.displayCanvas.height !== atlasHeight
-    ) {
-      this.displayCanvas.width = atlasWidth;
-      this.displayCanvas.height = atlasHeight;
+    const textureRecreated =
+      previousWidth !== this.canvas.width || previousHeight !== this.canvas.height;
+    if (textureRecreated) {
       this.texture.dispose();
       this.texture = this.createTexture();
-      textureRecreated = true;
     }
 
     for (const entry of this.entries) {
@@ -319,22 +308,6 @@ export function renderSharedLive2DAtlas(): void {
   const renderStart = beginLive2DProfile();
   sharedLive2DAtlas.pixiApp.renderer.render(sharedLive2DAtlas.pixiApp.stage);
   endLive2DProfile("live2d.sharedAtlas.render", renderStart);
-
-  const blitStart = beginLive2DProfile();
-  sharedLive2DAtlas.displayContext.clearRect(
-    0,
-    0,
-    sharedLive2DAtlas.displayCanvas.width,
-    sharedLive2DAtlas.displayCanvas.height
-  );
-  sharedLive2DAtlas.displayContext.drawImage(
-    sharedLive2DAtlas.canvas,
-    0,
-    0,
-    sharedLive2DAtlas.displayCanvas.width,
-    sharedLive2DAtlas.displayCanvas.height
-  );
-  endLive2DProfile("live2d.sharedAtlas.blitTo2d", blitStart);
 
   const textureStart = beginLive2DProfile();
   sharedLive2DAtlas.texture.needsUpdate = true;
@@ -508,7 +481,7 @@ export async function createLive2DContext(opts: {
   return {
     pixiApp: atlas.pixiApp,
     live2dModel,
-    canvas: atlas.displayCanvas,
+    canvas: atlas.canvas,
     sharedTexture: atlas.texture,
     atlasHandle,
   };
