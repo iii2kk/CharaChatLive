@@ -202,9 +202,11 @@ export class CubismInstance extends CubismUserModel {
       }
     }
 
-    // モデル行列: 高さを 2.0 (=[-1,1] Y レンジ) に正規化（幅は setHeight 内でアスペクト比を維持）
-    this._modelMatrix.setHeight(2.0);
-    this._modelMatrix.setCenterPosition(0.0, 0.0);
+    // CubismModelMatrix は loadModel の中で (cw, ch) + setHeight(2.0) 済み。
+    // 縦長キャンバスの場合のみ setWidth(2.0) に差し替えて幅を埋める（LAppModel 標準パターン）。
+    if (this._canvasWidth < this._canvasHeight) {
+      this._modelMatrix.setWidth(2.0);
+    }
 
     this.setInitialized(true);
   }
@@ -293,9 +295,18 @@ export class CubismInstance extends CubismUserModel {
     const renderer = this.getRenderer();
     if (!renderer) return;
 
-    // MVP: 内部のモデル行列をそのまま投影行列として使用。
-    // viewport 幅/高さ比がモデルのアスペクト比と一致している前提（アトラス側で保証）
+    // MVP: projection × modelMatrix (LAppModel 標準パターン)
+    // modelMatrix だけだと横長モデルは X が [-cw/ch, cw/ch] に広がって clip され、
+    // 縦長モデルは setWidth(2.0) で Y が [-ch/cw, ch/cw] になる。
+    // projection.scale でそれぞれ反対軸を縮めて NDC [-1, 1] に収める。
     const mvp = new CubismMatrix44();
+    if (this._canvasWidth < this._canvasHeight) {
+      // portrait
+      mvp.scale(1.0, this._canvasWidth / this._canvasHeight);
+    } else {
+      // landscape / square
+      mvp.scale(this._canvasHeight / this._canvasWidth, 1.0);
+    }
     mvp.multiplyByMatrix(this._modelMatrix);
     renderer.setMvpMatrix(mvp);
 
