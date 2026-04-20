@@ -12,7 +12,8 @@ import {
   setModelLayoutOffset,
   type ModelInteractionMetrics,
 } from "@/lib/character/modelTransform";
-import { renderSharedLive2DAtlas } from "@/lib/character/live2dPixi";
+import { renderSharedLive2DAtlas } from "@/lib/character/live2dThree/sharedAtlasRenderer";
+import { setThreeRendererRef } from "@/lib/character/live2dThree/threeRendererRef";
 import {
   beginLive2DProfile,
   endLive2DProfile,
@@ -38,7 +39,7 @@ export default function CharacterModels({
   selectionEnabled,
   viewerSettings,
 }: CharacterModelsProps) {
-  const { camera, scene } = useThree();
+  const { camera, scene, gl } = useThree();
   const selectionRingRef = useRef<THREE.Mesh | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightedMetricsRef = useRef<ModelInteractionMetrics | null>(null);
@@ -93,7 +94,7 @@ export default function CharacterModels({
           : live2dRenderAccumulatorMsRef.current % renderIntervalMs;
 
         const sharedRenderStart = beginLive2DProfile();
-        renderSharedLive2DAtlas();
+        renderSharedLive2DAtlas(gl);
         endLive2DProfile("live2d.frame.sharedRender", sharedRenderStart);
 
         for (const model of models) {
@@ -253,6 +254,14 @@ export default function CharacterModels({
     },
     []
   );
+
+  // Live2D (Cubism direct renderer) が Canvas 外から WebGLRenderer を取得できるよう登録
+  useEffect(() => {
+    setThreeRendererRef(gl);
+    return () => {
+      setThreeRendererRef(null);
+    };
+  }, [gl]);
 
   return (
     <>

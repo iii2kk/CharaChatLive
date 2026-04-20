@@ -1,9 +1,4 @@
 import * as THREE from "three";
-import type { Application as PixiApplication } from "pixi.js";
-import type {
-  Cubism4InternalModel,
-  Live2DModel,
-} from "pixi-live2d-display-lipsyncpatch/cubism4";
 import type { FileMap } from "@/lib/file-map";
 import {
   MutableExpressionMapping,
@@ -19,8 +14,19 @@ import type {
 } from "./types";
 import { SEMANTIC_EXPRESSION_KEYS } from "./types";
 import { revokeFileMapUrls } from "./urlModifier";
-import type { Live2DAtlasHandle, Live2DAtlasLayout } from "./live2dPixi";
-import { computeLive2DCanvasSize, createLive2DContext } from "./live2dPixi";
+// CubismInstance / loadModelSetting は Cubism Framework 経由で
+// top-level に Live2DCubismCore を参照する enum を間接的に持ち込むため、
+// Next.js の SSR/プリレンダリングでエラーになる。型のみ静的に import し、
+// 実装は load() 内で dynamic import する。
+import type { CubismInstance } from "./live2dThree/cubismInstance";
+import {
+  computeLive2DCanvasSize,
+  registerInstance,
+  resetSharedAtlasIfEmpty,
+  type Live2DAtlasHandle,
+  type Live2DAtlasLayout,
+} from "./live2dThree/sharedAtlasRenderer";
+import { waitForThreeRenderer } from "./live2dThree/threeRendererRef";
 import {
   beginLive2DProfile,
   endLive2DProfile,
@@ -68,14 +74,10 @@ const SEMANTIC_PARAM_MAP: Record<
   ],
 };
 
-type AnyCubismModel = Cubism4InternalModel["coreModel"];
-
 interface Live2dConstructorOptions {
   id: string;
   name: string;
-  pixiApp: PixiApplication<HTMLCanvasElement>;
-  live2dModel: Live2DModel;
-  canvas: HTMLCanvasElement;
+  instance: CubismInstance;
   atlasHandle: Live2DAtlasHandle;
   fileMap: FileMap | null;
   renderScale: number;
@@ -94,10 +96,8 @@ export class Live2dCharacterModel implements CharacterModel {
   readonly animation: AnimationController;
   readonly physics: PhysicsController;
 
-  private pixiApp: PixiApplication<HTMLCanvasElement>;
-  private live2dModel: Live2DModel;
-  private canvas: HTMLCanvasElement;
-  private sharedTexture: THREE.CanvasTexture;
+  private instance: CubismInstance;
+  private sharedTexture: THREE.Texture;
   private atlasHandle: Live2DAtlasHandle;
   private currentAtlasLayout: Live2DAtlasLayout | null = null;
   private planeMaterial: THREE.MeshBasicMaterial;
@@ -111,18 +111,17 @@ export class Live2dCharacterModel implements CharacterModel {
   get renderScale(): number {
     return this._renderScale;
   }
-
   get effectiveRenderScale(): number {
     return this._renderScale * this._distanceScale;
   }
-
   get planeScale(): number {
     return this._planeScale;
   }
 
-  /** 表情コントローラの最後の set 値。Live2D 側は重みを直接持たないため自前で記録 */
+  /** 表情コントローラの最後の set 値 */
   private expressionWeights = new Map<string, number>();
-  /** 現在再生中のモーション（簡易 isLoaded 判定用） */
+  /** .exp3.json 由来の表情名集合 */
+  private expressionNames: string[] = [];
   private hasStartedMotion = false;
   private physicsEnabled = true;
   private paused = false;
@@ -132,18 +131,12 @@ export class Live2dCharacterModel implements CharacterModel {
   constructor(opts: Live2dConstructorOptions) {
     this.id = opts.id;
     this.name = opts.name;
-    this.pixiApp = opts.pixiApp;
-    this.live2dModel = opts.live2dModel;
-    this.canvas = opts.canvas;
+    this.instance = opts.instance;
     this.sharedTexture = opts.atlasHandle.getSharedTexture();
     this.atlasHandle = opts.atlasHandle;
     this.fileMap = opts.fileMap;
     this._renderScale = opts.renderScale;
     this._planeScale = opts.planeScale;
-
-    // 初回描画（テクスチャ生成前に 1 フレーム描いておく）
-    this.pixiApp.renderer.render(this.pixiApp.stage);
-    this.sharedTexture.needsUpdate = true;
 
     const initialLayout = this.atlasHandle.getLayout();
     this.currentAtlasLayout = initialLayout;
@@ -154,6 +147,7 @@ export class Live2dCharacterModel implements CharacterModel {
       transparent: true,
       side: THREE.DoubleSide,
       depthWrite: false,
+      premultipliedAlpha: true,
     });
     this.planeMesh = new THREE.Mesh(
       this.createPlaneGeometry(planeWidth, planeHeight, initialLayout),
@@ -165,6 +159,10 @@ export class Live2dCharacterModel implements CharacterModel {
     this.group.name = `live2d:${opts.id}`;
     this.group.add(this.planeMesh);
     this.object = this.group;
+
+    this.expressionNames = this.instance
+      .listExpressions()
+      .map((e) => e.name);
 
     this.atlasHandle.setOnLayoutChange((layout) => {
       this.applyAtlasLayout(layout);
@@ -185,27 +183,33 @@ export class Live2dCharacterModel implements CharacterModel {
     renderScale: number;
     planeScale: number;
   }): Promise<Live2dCharacterModel> {
-    const ctx = await createLive2DContext({
-      modelUrl: opts.url,
-      fileMap: opts.fileMap,
-      renderScale: opts.renderScale,
-    });
+    const [{ CubismInstance: CubismInstanceCtor }, { loadModelSetting }] =
+      await Promise.all([
+        import("./live2dThree/cubismInstance"),
+        import("./live2dThree/cubismSetting"),
+      ]);
+    const instance = new CubismInstanceCtor();
+    await instance.loadFromSource(opts.url, opts.fileMap);
 
-    // if (!isCubism4(ctx.live2dModel)) {
-    //   ctx.live2dModel.destroy({ children: true, texture: true, baseTexture: true });
-    //   ctx.pixiApp.destroy(true, { children: true, texture: true, baseTexture: true });
-    //   throw new Error(
-    //     "このモデルは Cubism 2 系です。現在は Cubism 3/4/5 のみ対応しています"
-    //   );
-    // }
+    const threeRenderer = await waitForThreeRenderer();
+    const gl = threeRenderer.getContext() as
+      | WebGL2RenderingContext
+      | WebGLRenderingContext;
+    const { resolveAsset } = await loadModelSetting(opts.url, opts.fileMap);
+    await instance.initializeRendering(gl, resolveAsset);
+
+    const { width, height } = computeLive2DCanvasSize(
+      instance.getCanvasWidth(),
+      instance.getCanvasHeight(),
+      opts.renderScale
+    );
+    const atlasHandle = registerInstance(instance, width, height);
 
     return new Live2dCharacterModel({
       id: opts.id,
       name: opts.name,
-      pixiApp: ctx.pixiApp,
-      live2dModel: ctx.live2dModel,
-      canvas: ctx.canvas,
-      atlasHandle: ctx.atlasHandle,
+      instance,
+      atlasHandle,
       fileMap: opts.fileMap,
       renderScale: opts.renderScale,
       planeScale: opts.planeScale,
@@ -213,41 +217,25 @@ export class Live2dCharacterModel implements CharacterModel {
   }
 
   update(delta: number): void {
-    if (this.disposed) {
-      return;
-    }
+    if (this.disposed) return;
+    if (this.paused) return;
 
-    if (this.paused) {
-      // paused 時は PIXI ステージを再描画しない（最後のフレームを維持）
-      return;
-    }
-
-    // Cubism は ms 単位。Three.js の delta は秒
     const dtMs = delta * 1000;
     const updateStart = beginLive2DProfile();
 
-    // ExpressionMapping で指定されている仮想表情を毎フレーム反映
-    // （Live2D のパラメータは毎フレーム上書きされるため）
     const expressionStart = beginLive2DProfile();
     this.applySemanticParameters();
     endLive2DProfile("live2d.update.expressions", expressionStart);
 
     const cubismUpdateStart = beginLive2DProfile();
-    this.live2dModel.update(dtMs);
+    this.instance.updateModel(dtMs);
     endLive2DProfile("live2d.update.cubism", cubismUpdateStart);
 
-    // 物理は InternalModel.update の中で動くため、無効化時は
-    // update を呼ばずに expressionManager のみ反映する必要があるが
-    // pixi-live2d-display では一体化しているため、現状は physicsEnabled が
-    // true/false に関わらず update を呼ぶ（setEnabled は将来対応）
     endLive2DProfile("live2d.update.total", updateStart);
   }
 
   afterSharedRender(): void {
-    if (this.disposed) {
-      return;
-    }
-
+    if (this.disposed) return;
     this.needsSharedRender = false;
   }
 
@@ -257,20 +245,14 @@ export class Live2dCharacterModel implements CharacterModel {
 
   setRenderScale(scale: number): void {
     const clamped = THREE.MathUtils.clamp(scale, 0.4, 3.0);
-    if (Math.abs(this.renderScale - clamped) < 0.001) {
-      return;
-    }
-
+    if (Math.abs(this.renderScale - clamped) < 0.001) return;
     this._renderScale = clamped;
     this.resizeCanvasForCurrentViewport();
   }
 
   setDisplayScale(scale: number): void {
     const clamped = THREE.MathUtils.clamp(scale, 0.4, 2.5);
-    if (Math.abs(this.planeScale - clamped) < 0.001) {
-      return;
-    }
-
+    if (Math.abs(this.planeScale - clamped) < 0.001) return;
     this._planeScale = clamped;
     if (this.currentAtlasLayout) {
       this.applyAtlasLayout(this.currentAtlasLayout);
@@ -279,32 +261,22 @@ export class Live2dCharacterModel implements CharacterModel {
 
   setDistanceScale(factor: number): void {
     const clamped = THREE.MathUtils.clamp(factor, 0.2, 2.0);
-    if (Math.abs(this._distanceScale - clamped) < 0.01) {
-      return;
-    }
-
+    if (Math.abs(this._distanceScale - clamped) < 0.01) return;
     this._distanceScale = clamped;
     this.resizeCanvasForCurrentViewport();
   }
 
   dispose(): void {
-    if (this.disposed) {
-      return;
-    }
+    if (this.disposed) return;
     this.disposed = true;
 
     this.group.removeFromParent();
     this.atlasHandle.setOnLayoutChange(null);
     this.atlasHandle.dispose();
+    resetSharedAtlasIfEmpty();
 
     try {
-      this.live2dModel.destroy({
-        children: true,
-        // URL ベースで共有される PIXI Texture / BaseTexture をここで破棄すると、
-        // 同じアセットを参照している他の Live2D インスタンスまで真っ白になる。
-        texture: false,
-        baseTexture: false,
-      });
+      this.instance.disposeAll();
     } catch {
       /* ignore */
     }
@@ -323,21 +295,14 @@ export class Live2dCharacterModel implements CharacterModel {
   // ──────────────────────────────────────────────
 
   private createExpressionController(): ExpressionController {
-    // .exp3.json 由来の表情
-    const expressionManager =
-      this.live2dModel.internalModel.motionManager.expressionManager;
-    const expDefinitions =
-      (expressionManager?.definitions as Array<{ Name: string; File: string }> | undefined) ?? [];
-
-    const expressionInfos: ExpressionInfo[] = expDefinitions.map((d) => ({
-      name: d.Name,
+    const expressionInfos: ExpressionInfo[] = this.expressionNames.map((n) => ({
+      name: n,
       category: "other" as const,
     }));
 
-    // セマンティック仮想表情も list に混ぜて返す
     const semanticInfos: ExpressionInfo[] = SEMANTIC_EXPRESSION_KEYS.map(
       (key) => ({
-        name: key, // "blink" / "aa" / ...
+        name: key,
         category:
           key === "blink" || key === "blinkLeft" || key === "blinkRight"
             ? ("eye" as const)
@@ -350,7 +315,7 @@ export class Live2dCharacterModel implements CharacterModel {
     const isSemantic = (name: string): name is SemanticExpressionKey =>
       (SEMANTIC_EXPRESSION_KEYS as readonly string[]).includes(name);
 
-    const expDefinitionSet = new Set(expDefinitions.map((d) => d.Name));
+    const expDefinitionSet = new Set(this.expressionNames);
 
     return {
       list: () => allInfos,
@@ -360,15 +325,13 @@ export class Live2dCharacterModel implements CharacterModel {
         const clamped = THREE.MathUtils.clamp(weight, 0, 1);
         this.expressionWeights.set(name, clamped);
         if (isSemantic(name)) {
-          // 毎フレーム適用するので書き込みは update() 側で
-          return;
+          return; // 毎フレーム update() で反映
         }
         if (!expDefinitionSet.has(name)) return;
-        if (!expressionManager) return;
         if (clamped > 0) {
-          void expressionManager.setExpression(name);
+          this.instance.setExpression(name);
         } else {
-          expressionManager.resetExpression();
+          this.instance.resetExpression();
         }
       },
       setMany: (values) => {
@@ -380,23 +343,20 @@ export class Live2dCharacterModel implements CharacterModel {
         for (const info of allInfos) {
           this.expressionWeights.set(info.name, 0);
         }
-        expressionManager?.resetExpression();
+        this.instance.resetExpression();
       },
     };
   }
 
   private resizeCanvasForCurrentViewport(): void {
-    if (this.disposed) {
-      return;
-    }
+    if (this.disposed) return;
 
     const { width, height } = computeLive2DCanvasSize(
-      this.live2dModel.internalModel.width,
-      this.live2dModel.internalModel.height,
+      this.instance.getCanvasWidth(),
+      this.instance.getCanvasHeight(),
       this.effectiveRenderScale
     );
     const currentLayout = this.atlasHandle.getLayout();
-
     if (currentLayout.width === width && currentLayout.height === height) {
       return;
     }
@@ -406,9 +366,7 @@ export class Live2dCharacterModel implements CharacterModel {
   }
 
   private applyAtlasLayout(layout: Live2DAtlasLayout): void {
-    if (this.disposed) {
-      return;
-    }
+    if (this.disposed) return;
 
     const layoutStart = beginLive2DProfile();
 
@@ -461,11 +419,6 @@ export class Live2dCharacterModel implements CharacterModel {
     return geometry;
   }
 
-  /**
-   * セマンティックキー (`blink` 等) をそのままマッピング初期値に入れる。
-   * `buildAutoMapping` を使わず、自分のコントローラが `has("blink")` を true で返す
-   * 前提で直接登録する。
-   */
   private createExpressionMappingWithSemanticKeys(): MutableExpressionMapping {
     return new MutableExpressionMapping({
       blink: "blink",
@@ -479,30 +432,16 @@ export class Live2dCharacterModel implements CharacterModel {
     });
   }
 
-  /**
-   * update() の前に呼ぶ。expressionWeights に格納されたセマンティックキーの重みを
-   * Live2D の coreModel パラメータに書き込む。
-   */
   private applySemanticParameters(): void {
-    const coreModel = (this.live2dModel.internalModel as Cubism4InternalModel)
-      .coreModel as AnyCubismModel & {
-      setParameterValueById(id: string, value: number, weight?: number): void;
-      getParameterValueById?(id: string): number;
-    };
-
     for (const key of SEMANTIC_EXPRESSION_KEYS) {
       const w = this.expressionWeights.get(key) ?? 0;
       if (w <= 0) continue;
       const params = SEMANTIC_PARAM_MAP[key];
       for (const { id, valueAtOne } of params) {
         try {
-          // 現在値から valueAtOne へ w で補間
-          const base =
-            typeof coreModel.getParameterValueById === "function"
-              ? coreModel.getParameterValueById(id)
-              : 0;
+          const base = this.instance.getParameterValue(id);
           const target = base + (valueAtOne - base) * w;
-          coreModel.setParameterValueById(id, target);
+          this.instance.setParameterValue(id, target);
         } catch {
           // そのパラメータを持たないモデルは無視
         }
@@ -516,26 +455,19 @@ export class Live2dCharacterModel implements CharacterModel {
 
   private createAnimationController(): AnimationController {
     return {
-      getCurrentClip: () => null, // Live2D は THREE.AnimationClip に変換しない
+      getCurrentClip: () => null,
       isLoaded: () => this.hasStartedMotion,
       loadAndPlay: async (urls) => {
-        // Live2D ではフォルダ取り込み時に model3.json 内で参照されるモーションが
-        // すべて既に MotionManager にロード済み。追加 URL 再生は未対応。
-        // モデル側のデフォルトの Idle グループを再生する
-        const manager = this.live2dModel.internalModel.motionManager;
-        const groups = Object.keys(manager.definitions ?? {});
+        const groups = this.instance.listMotionGroups();
         if (groups.length === 0) return;
-
-        // Idle 系を優先。なければ先頭グループ
         const idleGroup =
-          groups.find((g) => /idle/i.test(g)) ?? groups[0];
-        const ok = await this.live2dModel.motion(idleGroup, 0);
+          groups.find((g) => /idle/i.test(g.groupName)) ?? groups[0];
+        const ok = this.instance.startMotion(idleGroup.groupName, 0);
         if (ok) this.hasStartedMotion = true;
-        // 追加 urls のハンドリングは将来対応
-        void urls;
+        void urls; // 追加 urls のハンドリングは将来対応
       },
       stop: () => {
-        this.live2dModel.stopMotions();
+        this.instance.stopMotions();
         this.hasStartedMotion = false;
       },
       setPaused: (paused) => {
@@ -557,11 +489,11 @@ export class Live2dCharacterModel implements CharacterModel {
       isEnabled: () => this.physicsEnabled,
       setEnabled: async (enabled) => {
         this.physicsEnabled = enabled;
-        // pixi-live2d-display 側の物理 on/off は内部 API が fragile なので、
-        // フラグだけ保持。update の呼び出しはいずれにせよ行う。
+        // Cubism 側の物理 on/off は updateModel 内で分岐する必要があるが、
+        // 現状はフラグのみ保持し、将来的に updateModel で参照する。
       },
       setGravity: () => {
-        // Live2D .physics3 はカスタム重力パラメータを公開していないため no-op
+        // Live2D .physics3 はカスタム重力を公開していないため no-op
       },
     };
   }
