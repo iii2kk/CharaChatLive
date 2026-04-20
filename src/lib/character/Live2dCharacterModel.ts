@@ -100,8 +100,8 @@ export class Live2dCharacterModel implements CharacterModel {
   private sharedTexture: THREE.Texture;
   private atlasHandle: Live2DAtlasHandle;
   private currentAtlasLayout: Live2DAtlasLayout | null = null;
-  private planeMaterial: THREE.MeshBasicMaterial;
-  private planeMesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+  private planeMaterial: THREE.ShaderMaterial;
+  private planeMesh: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
   private group: THREE.Group;
   private fileMap: FileMap | null;
   private _renderScale: number;
@@ -142,8 +142,30 @@ export class Live2dCharacterModel implements CharacterModel {
     this.currentAtlasLayout = initialLayout;
     const planeHeight = this.getPlaneHeight();
     const planeWidth = planeHeight * (initialLayout.width / initialLayout.height);
-    this.planeMaterial = new THREE.MeshBasicMaterial({
-      map: this.sharedTexture,
+
+    // Cubism は sRGB 値を premultiplied alpha でそのまま RT に書き込む。
+    // Three の outputColorSpace (linear→sRGB) を適用すると二重エンコードになるので、
+    // ShaderMaterial で「テクセル素通し」の出力を行い、Three の自動エンコーディング
+    // （<colorspace_fragment> chunk）を一切含めない。
+    this.planeMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        map: { value: this.sharedTexture },
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        precision highp float;
+        uniform sampler2D map;
+        varying vec2 vUv;
+        void main() {
+          gl_FragColor = texture2D(map, vUv);
+        }
+      `,
       transparent: true,
       side: THREE.DoubleSide,
       depthWrite: false,
@@ -374,7 +396,7 @@ export class Live2dCharacterModel implements CharacterModel {
     const nextSharedTexture = this.atlasHandle.getSharedTexture();
     if (this.sharedTexture !== nextSharedTexture) {
       this.sharedTexture = nextSharedTexture;
-      this.planeMaterial.map = nextSharedTexture;
+      this.planeMaterial.uniforms.map.value = nextSharedTexture;
       this.planeMaterial.needsUpdate = true;
     }
     this.needsSharedRender = true;

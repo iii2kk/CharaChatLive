@@ -137,8 +137,18 @@ class SharedLive2DAtlas {
       depthBuffer: false,
       stencilBuffer: false,
       generateMipmaps: false,
-      colorSpace: THREE.SRGBColorSpace,
+      // Cubism のフラグメントシェーダは最終的な sRGB 値を gl_FragColor に直接書き出す。
+      // RT を SRGBColorSpace にすると GPU が「書き込み時に linear→sRGB 変換」を適用して
+      // Cubism の値を二重エンコード（白っぽく）してしまう。
+      // 対策:
+      //   - 内部フォーマットを RGBA8 に固定 → GPU 書き込み時変換を無効化。
+      //   - texture.colorSpace は NoColorSpace に → Three もサンプル時に触らない。
+      //   - 板ポリは独自 ShaderMaterial で "texel をそのまま出力" し、Three の
+      //     outputColorSpace による linear→sRGB もスキップする（本ファイル外）。
+      //   これで Cubism の sRGB 値が canvas にそのまま届く。
+      colorSpace: THREE.NoColorSpace,
     });
+    rt.texture.internalFormat = "RGBA8";
     // Three はデフォルトで render target のテクスチャは flipY = false
     return rt;
   }
