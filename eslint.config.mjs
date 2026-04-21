@@ -16,6 +16,7 @@ const eslintConfig = defineConfig([
     // ライセンス上 改変不可 で、かつ IIFE の括弧関数呼び出しを no-unused-expressions が
     // 大量に誤検知するため。
     "public/live2dcubismcore.min.js",
+    "src/vendor/cubism-framework/**",
   ]),
 ]);
 
