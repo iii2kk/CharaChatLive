@@ -286,7 +286,7 @@ export class CubismInstance extends CubismUserModel {
    * 毎フレーム呼ぶ。motion/physics/eyeblink/breath/pose/expression を進める。
    * dtMs はミリ秒（Three の delta * 1000）
    */
-  public updateModel(dtMs: number): void {
+  public updateModel(dtMs: number, applyOverrides?: () => void): void {
     if (!this._model || !this._setting) return;
     const dtSec = dtMs / 1000;
 
@@ -324,6 +324,7 @@ export class CubismInstance extends CubismUserModel {
       this._pose.updateParameters(this._model, dtSec);
     }
 
+    applyOverrides?.();
     this._model.update();
   }
 
@@ -408,6 +409,10 @@ export class CubismInstance extends CubismUserModel {
 
   public resetExpression(): void {
     this._expressionManager.stopAllMotions();
+    if (this._model) {
+      this._model.loadParameters();
+      this._model.update();
+    }
   }
 
   /** セマンティック表情用: coreModel への直接パラメータ書き込み */
@@ -423,6 +428,21 @@ export class CubismInstance extends CubismUserModel {
     const idManager = CubismFramework.getIdManager();
     const handle = idManager.getId(id);
     return this._model.getParameterValueById(handle);
+  }
+
+  public getParameterRange(id: string): { min: number; max: number } | null {
+    if (!this._model) return null;
+    const idManager = CubismFramework.getIdManager();
+    const handle = idManager.getId(id);
+    try {
+      const index = this._model.getParameterIndex(handle);
+      return {
+        min: this._model.getParameterMinimumValue(index),
+        max: this._model.getParameterMaximumValue(index),
+      };
+    } catch {
+      return null;
+    }
   }
 
   public disposeAll(): void {

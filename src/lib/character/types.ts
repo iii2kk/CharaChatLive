@@ -22,6 +22,17 @@ export interface ExpressionController {
   reset(): void;
 }
 
+export interface PresetExpressionInfo {
+  name: string;
+}
+
+export interface PresetExpressionController {
+  list(): readonly PresetExpressionInfo[];
+  getActive(): string | null;
+  apply(name: string): void;
+  clear(): void;
+}
+
 export type SemanticExpressionKey =
   | "blink"
   | "blinkLeft"
@@ -48,6 +59,11 @@ export type SemanticExpressionMappingSnapshot = Record<
   string | null
 >;
 
+export interface SemanticMappingOption {
+  value: string;
+  label: string;
+}
+
 export interface ExpressionMapping {
   blink: string | null;
   blinkLeft: string | null;
@@ -62,6 +78,7 @@ export interface ExpressionMapping {
   subscribe(listener: () => void): () => void;
   set(key: SemanticExpressionKey, name: string | null): void;
   toJSON(): SemanticExpressionMappingSnapshot;
+  getOptions?(key: SemanticExpressionKey): readonly SemanticMappingOption[];
 }
 
 export interface BoneRef {
@@ -110,6 +127,7 @@ export interface CharacterModel {
 
   readonly expressions: ExpressionController;
   readonly expressionMapping: ExpressionMapping;
+  readonly presetExpressions?: PresetExpressionController;
   readonly bones: BoneController;
   readonly animation: AnimationController;
   readonly physics: PhysicsController;

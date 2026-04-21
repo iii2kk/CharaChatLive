@@ -1,4 +1,5 @@
 import {
+  type SemanticMappingOption,
   SEMANTIC_EXPRESSION_KEYS,
   type ExpressionMapping,
   type SemanticExpressionKey,
@@ -16,8 +17,12 @@ export class MutableExpressionMapping implements ExpressionMapping {
   oh: string | null = null;
 
   private listeners = new Set<() => void>();
+  private options: Partial<Record<SemanticExpressionKey, readonly SemanticMappingOption[]>>;
 
-  constructor(initial?: Partial<SemanticExpressionMappingSnapshot>) {
+  constructor(
+    initial?: Partial<SemanticExpressionMappingSnapshot>,
+    options?: Partial<Record<SemanticExpressionKey, readonly SemanticMappingOption[]>>
+  ) {
     if (initial) {
       for (const key of SEMANTIC_EXPRESSION_KEYS) {
         const value = initial[key];
@@ -26,6 +31,7 @@ export class MutableExpressionMapping implements ExpressionMapping {
         }
       }
     }
+    this.options = options ?? {};
   }
 
   subscribe(listener: () => void): () => void {
@@ -52,6 +58,10 @@ export class MutableExpressionMapping implements ExpressionMapping {
       ee: this.ee,
       oh: this.oh,
     };
+  }
+
+  getOptions(key: SemanticExpressionKey): readonly SemanticMappingOption[] {
+    return this.options[key] ?? [];
   }
 
   private notify() {

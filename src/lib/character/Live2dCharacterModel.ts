@@ -4,6 +4,12 @@ import type { ViewerSettings } from "@/lib/viewer-settings";
 import {
   MutableExpressionMapping,
 } from "./ExpressionMapping";
+import {
+  loadLive2dProfile,
+  resolveLive2dSemanticOption,
+  type Live2dSemanticProfile,
+  type Live2dSemanticTarget,
+} from "./live2dProfile";
 import type {
   AnimationController,
   BoneController,
@@ -12,6 +18,7 @@ import type {
   ExpressionController,
   ExpressionInfo,
   PhysicsController,
+  PresetExpressionController,
   SemanticExpressionKey,
 } from "./types";
 import { SEMANTIC_EXPRESSION_KEYS } from "./types";
@@ -41,42 +48,6 @@ import {
  */
 const BASE_PLANE_HEIGHT = 20;
 
-/**
- * セマンティック表情キー → Live2D パラメータ ID マッピング。
- * 値は「キーを 1 に振ったときに各パラメータをどうするか」。
- */
-const SEMANTIC_PARAM_MAP: Record<
-  SemanticExpressionKey,
-  Array<{ id: string; valueAtOne: number }>
-> = {
-  blink: [
-    { id: "ParamEyeLOpen", valueAtOne: 0 },
-    { id: "ParamEyeROpen", valueAtOne: 0 },
-  ],
-  blinkLeft: [{ id: "ParamEyeLOpen", valueAtOne: 0 }],
-  blinkRight: [{ id: "ParamEyeROpen", valueAtOne: 0 }],
-  aa: [
-    { id: "ParamMouthOpenY", valueAtOne: 1 },
-    { id: "ParamMouthForm", valueAtOne: 0 },
-  ],
-  ih: [
-    { id: "ParamMouthOpenY", valueAtOne: 0.3 },
-    { id: "ParamMouthForm", valueAtOne: 1 },
-  ],
-  ou: [
-    { id: "ParamMouthOpenY", valueAtOne: 0.6 },
-    { id: "ParamMouthForm", valueAtOne: -1 },
-  ],
-  ee: [
-    { id: "ParamMouthOpenY", valueAtOne: 0.4 },
-    { id: "ParamMouthForm", valueAtOne: 0.5 },
-  ],
-  oh: [
-    { id: "ParamMouthOpenY", valueAtOne: 0.7 },
-    { id: "ParamMouthForm", valueAtOne: -0.5 },
-  ],
-};
-
 interface Live2dConstructorOptions {
   id: string;
   name: string;
@@ -85,6 +56,7 @@ interface Live2dConstructorOptions {
   fileMap: FileMap | null;
   renderScale: number;
   planeScale: number;
+  semanticProfile: Live2dSemanticProfile;
 }
 
 export function syncLive2dRenderer(
@@ -126,6 +98,7 @@ export class Live2dCharacterModel implements CharacterModel {
 
   readonly expressions: ExpressionController;
   readonly expressionMapping: MutableExpressionMapping;
+  readonly presetExpressions: PresetExpressionController;
   readonly bones: BoneController;
   readonly animation: AnimationController;
   readonly physics: PhysicsController;
@@ -138,6 +111,7 @@ export class Live2dCharacterModel implements CharacterModel {
   private planeMesh: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
   private group: THREE.Group;
   private fileMap: FileMap | null;
+  private semanticProfile: Live2dSemanticProfile;
   private _renderScale: number;
   private _planeScale: number;
   private _distanceScale = 1;
@@ -156,6 +130,7 @@ export class Live2dCharacterModel implements CharacterModel {
   private expressionWeights = new Map<string, number>();
   /** .exp3.json 由来の表情名集合 */
   private expressionNames: string[] = [];
+  private currentPresetExpression: string | null = null;
   private hasStartedMotion = false;
   private physicsEnabled = true;
   private paused = false;
@@ -169,6 +144,7 @@ export class Live2dCharacterModel implements CharacterModel {
     this.sharedTexture = opts.atlasHandle.getSharedTexture();
     this.atlasHandle = opts.atlasHandle;
     this.fileMap = opts.fileMap;
+    this.semanticProfile = opts.semanticProfile;
     this._renderScale = opts.renderScale;
     this._planeScale = opts.planeScale;
 
@@ -227,6 +203,7 @@ export class Live2dCharacterModel implements CharacterModel {
 
     this.expressions = this.createExpressionController();
     this.expressionMapping = this.createExpressionMappingWithSemanticKeys();
+    this.presetExpressions = this.createPresetExpressionController();
     this.bones = { list: () => [], find: () => null };
     this.animation = this.createAnimationController();
     this.physics = this.createPhysicsController();
@@ -240,10 +217,15 @@ export class Live2dCharacterModel implements CharacterModel {
     renderScale: number;
     planeScale: number;
   }): Promise<Live2dCharacterModel> {
-    const [{ CubismInstance: CubismInstanceCtor }, { loadModelSetting }] =
+    const [
+      { CubismInstance: CubismInstanceCtor },
+      { loadModelSetting },
+      semanticProfile,
+    ] =
       await Promise.all([
         import("./live2dThree/cubismInstance"),
         import("./live2dThree/cubismSetting"),
+        loadLive2dProfile(opts.url, opts.fileMap),
       ]);
     const instance = new CubismInstanceCtor();
     await instance.loadFromSource(opts.url, opts.fileMap);
@@ -276,6 +258,7 @@ export class Live2dCharacterModel implements CharacterModel {
       fileMap: opts.fileMap,
       renderScale: opts.renderScale,
       planeScale: opts.planeScale,
+      semanticProfile,
     });
   }
 
@@ -284,8 +267,9 @@ export class Live2dCharacterModel implements CharacterModel {
     if (this.paused) return;
 
     const dtMs = delta * 1000;
-    this.applySemanticParameters();
-    this.instance.updateModel(dtMs);
+    this.instance.updateModel(dtMs, () => {
+      this.applySemanticParameters();
+    });
   }
 
   prepareFrame(context: CharacterFrameContext): void {
@@ -392,11 +376,6 @@ export class Live2dCharacterModel implements CharacterModel {
   // ──────────────────────────────────────────────
 
   private createExpressionController(): ExpressionController {
-    const expressionInfos: ExpressionInfo[] = this.expressionNames.map((n) => ({
-      name: n,
-      category: "other" as const,
-    }));
-
     const semanticInfos: ExpressionInfo[] = SEMANTIC_EXPRESSION_KEYS.map(
       (key) => ({
         name: key,
@@ -407,29 +386,18 @@ export class Live2dCharacterModel implements CharacterModel {
       })
     );
 
-    const allInfos = [...semanticInfos, ...expressionInfos];
-
     const isSemantic = (name: string): name is SemanticExpressionKey =>
       (SEMANTIC_EXPRESSION_KEYS as readonly string[]).includes(name);
 
-    const expDefinitionSet = new Set(this.expressionNames);
-
     return {
-      list: () => allInfos,
-      has: (name) => isSemantic(name) || expDefinitionSet.has(name),
+      list: () => semanticInfos,
+      has: (name) => isSemantic(name),
       get: (name) => this.expressionWeights.get(name) ?? 0,
       set: (name, weight) => {
+        if (!isSemantic(name)) return;
         const clamped = THREE.MathUtils.clamp(weight, 0, 1);
         this.expressionWeights.set(name, clamped);
-        if (isSemantic(name)) {
-          return; // 毎フレーム update() で反映
-        }
-        if (!expDefinitionSet.has(name)) return;
-        if (clamped > 0) {
-          this.instance.setExpression(name);
-        } else {
-          this.instance.resetExpression();
-        }
+        this.needsSharedRender = true;
       },
       setMany: (values) => {
         for (const [name, weight] of Object.entries(values)) {
@@ -437,10 +405,32 @@ export class Live2dCharacterModel implements CharacterModel {
         }
       },
       reset: () => {
-        for (const info of allInfos) {
+        for (const info of semanticInfos) {
           this.expressionWeights.set(info.name, 0);
         }
+        this.presetExpressions.clear();
+        this.needsSharedRender = true;
+      },
+    };
+  }
+
+  private createPresetExpressionController(): PresetExpressionController {
+    const infos = this.expressionNames.map((name) => ({ name }));
+
+    return {
+      list: () => infos,
+      getActive: () => this.currentPresetExpression,
+      apply: (name) => {
+        if (!this.expressionNames.includes(name)) return;
+        if (this.instance.setExpression(name)) {
+          this.currentPresetExpression = name;
+          this.needsSharedRender = true;
+        }
+      },
+      clear: () => {
+        this.currentPresetExpression = null;
         this.instance.resetExpression();
+        this.needsSharedRender = true;
       },
     };
   }
@@ -532,33 +522,63 @@ export class Live2dCharacterModel implements CharacterModel {
   }
 
   private createExpressionMappingWithSemanticKeys(): MutableExpressionMapping {
-    return new MutableExpressionMapping({
-      blink: "blink",
-      blinkLeft: "blinkLeft",
-      blinkRight: "blinkRight",
-      aa: "aa",
-      ih: "ih",
-      ou: "ou",
-      ee: "ee",
-      oh: "oh",
-    });
+    return new MutableExpressionMapping(this.semanticProfile.initialMapping, this.semanticProfile.options);
   }
 
   private applySemanticParameters(): void {
+    const additiveOverrides = new Map<string, number>();
+
     for (const key of SEMANTIC_EXPRESSION_KEYS) {
       const w = this.expressionWeights.get(key) ?? 0;
       if (w <= 0) continue;
-      const params = SEMANTIC_PARAM_MAP[key];
-      for (const { id, valueAtOne } of params) {
-        try {
-          const base = this.instance.getParameterValue(id);
-          const target = base + (valueAtOne - base) * w;
-          this.instance.setParameterValue(id, target);
-        } catch {
-          // そのパラメータを持たないモデルは無視
+
+      const params = resolveLive2dSemanticOption(
+        this.semanticProfile,
+        key,
+        this.expressionMapping[key]
+      );
+
+      for (const param of params) {
+        if (param.mode === "lerp") {
+          this.applyLerpSemanticTarget(param, w);
+          continue;
         }
+
+        additiveOverrides.set(
+          param.id,
+          (additiveOverrides.get(param.id) ?? 0) + param.valueAtOne * w
+        );
       }
     }
+
+    for (const [id, delta] of additiveOverrides) {
+      try {
+        const base = this.instance.getParameterValue(id);
+        const next = this.clampParameterValue(id, base + delta);
+        this.instance.setParameterValue(id, next);
+      } catch {
+        // そのパラメータを持たないモデルは無視
+      }
+    }
+  }
+
+  private applyLerpSemanticTarget(target: Live2dSemanticTarget, weight: number): void {
+    try {
+      const base = this.instance.getParameterValue(target.id);
+      const next = this.clampParameterValue(
+        target.id,
+        base + (target.valueAtOne - base) * weight
+      );
+      this.instance.setParameterValue(target.id, next);
+    } catch {
+      // そのパラメータを持たないモデルは無視
+    }
+  }
+
+  private clampParameterValue(id: string, value: number): number {
+    const range = this.instance.getParameterRange(id);
+    if (!range) return value;
+    return THREE.MathUtils.clamp(value, range.min, range.max);
   }
 
   // ──────────────────────────────────────────────
