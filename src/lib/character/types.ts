@@ -1,5 +1,6 @@
 import type * as THREE from "three";
 import type { FileMap, ModelKind } from "@/lib/file-map";
+import type { ViewerSettings } from "@/lib/viewer-settings";
 
 export type ExpressionCategory = "eye" | "lip" | "brow" | "other";
 
@@ -92,6 +93,15 @@ export interface PhysicsController {
   setGravity(gravity: THREE.Vector3): void;
 }
 
+export interface CharacterFrameContext {
+  readonly camera: THREE.Camera;
+  readonly renderer: THREE.WebGLRenderer;
+  readonly viewerSettings: ViewerSettings;
+  readonly delta: number;
+  readonly deltaMs: number;
+  readonly frameId: number;
+}
+
 export interface CharacterModel {
   readonly id: string;
   readonly name: string;
@@ -113,13 +123,9 @@ export interface CharacterModel {
 
   /** physics + animation + expression 適用 */
   update(delta: number): void;
-  afterSharedRender?(): void;
-  consumeSharedRenderRequest?(): boolean;
+  prepareFrame(context: CharacterFrameContext): void;
+  finalizeFrame(context: CharacterFrameContext): void;
   setRenderScale?(scale: number): void;
   setDisplayScale?(scale: number): void;
-  /** カメラ距離に応じた解像度係数を設定する (Live2D のみ) */
-  setDistanceScale?(factor: number): void;
-  /** グローバル解像度設定変更時の再計算 (Live2D のみ) */
-  refreshAtlasSize?(): void;
   dispose(): void;
 }

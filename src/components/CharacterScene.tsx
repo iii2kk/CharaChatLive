@@ -7,6 +7,10 @@ import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { InteractionMode } from "@/lib/interaction-mode";
+import {
+  syncLive2dRenderer,
+  syncLive2dViewerSettings,
+} from "@/lib/character/Live2dCharacterModel";
 import type { SceneLight } from "@/lib/scene-lights";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import FreeCameraControls from "./FreeCameraControls";
@@ -43,6 +47,11 @@ export default function CharacterScene({
   viewerSettings,
 }: CharacterSceneProps) {
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 10, 0), []);
+  const {
+    live2dQualityMultiplier,
+    live2dViewportHeightUsage,
+    live2dMaxEdge,
+  } = viewerSettings;
   const orbitMouseButtons = useMemo(
     () => ({
       LEFT: THREE.MOUSE.ROTATE,
@@ -51,7 +60,7 @@ export default function CharacterScene({
     }),
     []
   );
-  const { camera, invalidate } = useThree();
+  const { camera, gl, invalidate } = useThree();
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
   const [isAltPressed, setIsAltPressed] = useState(false);
   const [isDraggingPlacementGizmo, setIsDraggingPlacementGizmo] = useState(false);
@@ -137,6 +146,25 @@ export default function CharacterScene({
     () => freeCameraLookTargetRef.current,
     []
   );
+
+  useEffect(() => {
+    syncLive2dRenderer(gl);
+    return () => {
+      syncLive2dRenderer(null);
+    };
+  }, [gl]);
+
+  useEffect(() => {
+    syncLive2dViewerSettings({
+      live2dQualityMultiplier,
+      live2dViewportHeightUsage,
+      live2dMaxEdge,
+    });
+  }, [
+    live2dMaxEdge,
+    live2dQualityMultiplier,
+    live2dViewportHeightUsage,
+  ]);
 
   useEffect(() => {
     if (

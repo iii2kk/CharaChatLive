@@ -12,11 +12,6 @@ import {
   setModelLayoutOffset,
   type ModelInteractionMetrics,
 } from "@/lib/character/modelTransform";
-import {
-  renderSharedLive2DAtlas,
-  setLive2DResolutionConfig,
-} from "@/lib/character/live2dThree/sharedAtlasRenderer";
-import { setThreeRendererRef } from "@/lib/character/live2dThree/threeRendererRef";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 
 interface CharacterModelsProps {
@@ -41,7 +36,7 @@ export default function CharacterModels({
   const selectionRingRef = useRef<THREE.Mesh | null>(null);
   const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const highlightedMetricsRef = useRef<ModelInteractionMetrics | null>(null);
-  const live2dRenderAccumulatorMsRef = useRef(0);
+  const frameIdRef = useRef(0);
   const [highlightedModelId, setHighlightedModelId] = useState<string | null>(
     activeModelId
   );
@@ -52,50 +47,27 @@ export default function CharacterModels({
 
   useFrame((_, delta) => {
     const deltaMs = delta * 1000;
+    const frameId = ++frameIdRef.current;
+
     for (const model of models) {
       model.update(delta);
     }
 
-    // カメラ距離に応じて Live2D 解像度を自動調整
+    const frameContext = {
+      camera,
+      renderer: gl,
+      viewerSettings,
+      delta,
+      deltaMs,
+      frameId,
+    };
+
     for (const model of models) {
-      if (!model.setDistanceScale) continue;
-      // モデルの視覚中心 (足元 + 板ポリ高さの半分) を推定
-      const distance = camera.position.distanceTo(model.object.position);
-      // 基準距離 30 で factor=1.0。近いほど高解像度、遠いほど低解像度
-      //const factor = distance > 0 ? 30 / distance : 2.0;
-      const factor = distance > 0 ? 70.0 / (distance + 20.0) : 2.0;
-      //console.log("distanceScale::", factor, distance)
-      model.setDistanceScale(factor);
+      model.prepareFrame(frameContext);
     }
 
-    const hasLive2DModel = models.some((model) => model.kind === "live2d");
-    const live2dRenderFps = THREE.MathUtils.clamp(
-      viewerSettings.live2dRenderFps,
-      1,
-      60
-    );
-    if (!hasLive2DModel) {
-      live2dRenderAccumulatorMsRef.current = 0;
-    } else {
-      live2dRenderAccumulatorMsRef.current += deltaMs;
-      const renderIntervalMs = 1000 / live2dRenderFps;
-      const shouldForceSharedRender = models.some((model) =>
-        model.consumeSharedRenderRequest?.()
-      );
-      if (
-        shouldForceSharedRender ||
-        live2dRenderAccumulatorMsRef.current >= renderIntervalMs
-      ) {
-        live2dRenderAccumulatorMsRef.current = shouldForceSharedRender
-          ? 0
-          : live2dRenderAccumulatorMsRef.current % renderIntervalMs;
-
-        renderSharedLive2DAtlas(gl);
-
-        for (const model of models) {
-          model.afterSharedRender?.();
-        }
-      }
+    for (const model of models) {
+      model.finalizeFrame(frameContext);
     }
 
     const highlightedModel =
@@ -246,33 +218,6 @@ export default function CharacterModels({
     },
     []
   );
-
-  // Live2D (Cubism direct renderer) が Canvas 外から WebGLRenderer を取得できるよう登録
-  useEffect(() => {
-    setThreeRendererRef(gl);
-    return () => {
-      setThreeRendererRef(null);
-    };
-  }, [gl]);
-
-  // Live2D グローバル品質設定を sharedAtlasRenderer に反映し、既存モデルを refresh
-  useEffect(() => {
-    setLive2DResolutionConfig({
-      qualityMultiplier: viewerSettings.live2dQualityMultiplier,
-      viewportHeightUsage: viewerSettings.live2dViewportHeightUsage,
-      maxEdge: viewerSettings.live2dMaxEdge,
-    });
-    for (const model of models) {
-      if (model.kind === "live2d") {
-        model.refreshAtlasSize?.();
-      }
-    }
-  }, [
-    models,
-    viewerSettings.live2dQualityMultiplier,
-    viewerSettings.live2dViewportHeightUsage,
-    viewerSettings.live2dMaxEdge,
-  ]);
 
   return (
     <>

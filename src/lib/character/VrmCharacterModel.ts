@@ -19,6 +19,7 @@ import type {
   AnimationController,
   BoneController,
   BoneRef,
+  CharacterFrameContext,
   CharacterModel,
   ExpressionCategory,
   ExpressionController,
@@ -172,6 +173,14 @@ export class VrmCharacterModel implements CharacterModel {
       // ただし表情マネージャの値反映は必要なので個別に呼ぶ。
       this.vrm.expressionManager?.update();
     }
+  }
+
+  prepareFrame(context: CharacterFrameContext): void {
+    void context;
+  }
+
+  finalizeFrame(context: CharacterFrameContext): void {
+    void context;
   }
 
   dispose(): void {

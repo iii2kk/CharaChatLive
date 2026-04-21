@@ -1,11 +1,13 @@
 import * as THREE from "three";
 import type { FileMap } from "@/lib/file-map";
+import type { ViewerSettings } from "@/lib/viewer-settings";
 import {
   MutableExpressionMapping,
 } from "./ExpressionMapping";
 import type {
   AnimationController,
   BoneController,
+  CharacterFrameContext,
   CharacterModel,
   ExpressionController,
   ExpressionInfo,
@@ -21,12 +23,17 @@ import { revokeFileMapUrls } from "./urlModifier";
 import type { CubismInstance } from "./live2dThree/cubismInstance";
 import {
   computeLive2DCanvasSize,
+  renderSharedLive2DAtlas,
   registerInstance,
   resetSharedAtlasIfEmpty,
+  setLive2DResolutionConfig,
   type Live2DAtlasHandle,
   type Live2DAtlasLayout,
 } from "./live2dThree/sharedAtlasRenderer";
-import { waitForThreeRenderer } from "./live2dThree/threeRendererRef";
+import {
+  setThreeRendererRef,
+  waitForThreeRenderer,
+} from "./live2dThree/threeRendererRef";
 
 /**
  * 板ポリの高さ。MMD/VRM と並べたときの身長を合わせる目安値。
@@ -80,7 +87,38 @@ interface Live2dConstructorOptions {
   planeScale: number;
 }
 
+export function syncLive2dRenderer(
+  renderer: THREE.WebGLRenderer | null
+): void {
+  // Live2D (Cubism direct renderer) が Canvas 外から WebGLRenderer を
+  // 取得できるよう登録
+  setThreeRendererRef(renderer);
+}
+
+export function syncLive2dViewerSettings(
+  viewerSettings: Pick<
+    ViewerSettings,
+    "live2dQualityMultiplier" | "live2dViewportHeightUsage" | "live2dMaxEdge"
+  >
+): void {
+  // Live2D グローバル品質設定を sharedAtlasRenderer に反映し、
+  // 既存モデルを refresh
+  setLive2DResolutionConfig({
+    qualityMultiplier: viewerSettings.live2dQualityMultiplier,
+    viewportHeightUsage: viewerSettings.live2dViewportHeightUsage,
+    maxEdge: viewerSettings.live2dMaxEdge,
+  });
+
+  for (const instance of Live2dCharacterModel.instances) {
+    instance.refreshAtlasSize();
+  }
+}
+
 export class Live2dCharacterModel implements CharacterModel {
+  static readonly instances = new Set<Live2dCharacterModel>();
+  private static renderAccumulatorMs = 0;
+  private static lastFinalizedFrameId = -1;
+
   readonly id: string;
   readonly name: string;
   readonly kind = "live2d" as const;
@@ -177,6 +215,7 @@ export class Live2dCharacterModel implements CharacterModel {
     this.group.name = `live2d:${opts.id}`;
     this.group.add(this.planeMesh);
     this.object = this.group;
+    Live2dCharacterModel.instances.add(this);
 
     this.expressionNames = this.instance
       .listExpressions()
@@ -249,13 +288,57 @@ export class Live2dCharacterModel implements CharacterModel {
     this.instance.updateModel(dtMs);
   }
 
-  afterSharedRender(): void {
+  prepareFrame(context: CharacterFrameContext): void {
     if (this.disposed) return;
-    this.needsSharedRender = false;
+
+    // カメラ距離に応じて Live2D 解像度を自動調整
+    const distance = context.camera.position.distanceTo(this.object.position);
+    // モデルの視覚中心 (足元 + 板ポリ高さの半分) を推定
+    // 基準距離 30 で factor=1.0。近いほど高解像度、遠いほど低解像度
+    const factor = distance > 0 ? 70.0 / (distance + 20.0) : 2.0;
+    this.setDistanceScale(factor);
   }
 
-  consumeSharedRenderRequest(): boolean {
-    return this.needsSharedRender;
+  finalizeFrame(context: CharacterFrameContext): void {
+    if (this.disposed) return;
+    if (Live2dCharacterModel.lastFinalizedFrameId === context.frameId) {
+      return;
+    }
+    Live2dCharacterModel.lastFinalizedFrameId = context.frameId;
+
+    const instances = Array.from(Live2dCharacterModel.instances).filter(
+      (instance) => !instance.disposed
+    );
+    if (instances.length === 0) {
+      Live2dCharacterModel.renderAccumulatorMs = 0;
+      return;
+    }
+
+    Live2dCharacterModel.renderAccumulatorMs += context.deltaMs;
+    const live2dRenderFps = THREE.MathUtils.clamp(
+      context.viewerSettings.live2dRenderFps,
+      1,
+      60
+    );
+    const renderIntervalMs = 1000 / live2dRenderFps;
+    const shouldForceSharedRender = instances.some((instance) =>
+      instance.consumeSharedRenderRequest()
+    );
+
+    if (
+      shouldForceSharedRender ||
+      Live2dCharacterModel.renderAccumulatorMs >= renderIntervalMs
+    ) {
+      Live2dCharacterModel.renderAccumulatorMs = shouldForceSharedRender
+        ? 0
+        : Live2dCharacterModel.renderAccumulatorMs % renderIntervalMs;
+
+      renderSharedLive2DAtlas(context.renderer);
+
+      for (const instance of instances) {
+        instance.afterSharedRender();
+      }
+    }
   }
 
   setRenderScale(scale: number): void {
@@ -274,21 +357,10 @@ export class Live2dCharacterModel implements CharacterModel {
     }
   }
 
-  setDistanceScale(factor: number): void {
-    const clamped = THREE.MathUtils.clamp(factor, 0.2, 2.0);
-    if (Math.abs(this._distanceScale - clamped) < 0.01) return;
-    this._distanceScale = clamped;
-    this.resizeCanvasForCurrentViewport();
-  }
-
-  /** グローバル解像度設定 (quality multiplier 等) が変わったとき再計算させる */
-  refreshAtlasSize(): void {
-    this.resizeCanvasForCurrentViewport();
-  }
-
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    Live2dCharacterModel.instances.delete(this);
 
     this.group.removeFromParent();
     this.atlasHandle.setOnLayoutChange(null);
@@ -307,6 +379,11 @@ export class Live2dCharacterModel implements CharacterModel {
     if (this.fileMap) {
       revokeFileMapUrls(this.fileMap);
       this.fileMap = null;
+    }
+
+    if (Live2dCharacterModel.instances.size === 0) {
+      Live2dCharacterModel.renderAccumulatorMs = 0;
+      Live2dCharacterModel.lastFinalizedFrameId = -1;
     }
   }
 
@@ -366,6 +443,26 @@ export class Live2dCharacterModel implements CharacterModel {
         this.instance.resetExpression();
       },
     };
+  }
+
+  private afterSharedRender(): void {
+    if (this.disposed) return;
+    this.needsSharedRender = false;
+  }
+
+  private consumeSharedRenderRequest(): boolean {
+    return this.needsSharedRender;
+  }
+
+  refreshAtlasSize(): void {
+    this.resizeCanvasForCurrentViewport();
+  }
+
+  private setDistanceScale(factor: number): void {
+    const clamped = THREE.MathUtils.clamp(factor, 0.2, 2.0);
+    if (Math.abs(this._distanceScale - clamped) < 0.01) return;
+    this._distanceScale = clamped;
+    this.resizeCanvasForCurrentViewport();
   }
 
   private resizeCanvasForCurrentViewport(): void {

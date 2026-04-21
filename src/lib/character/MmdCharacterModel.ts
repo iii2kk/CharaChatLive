@@ -12,6 +12,7 @@ import type {
   AnimationController,
   BoneController,
   BoneRef,
+  CharacterFrameContext,
   CharacterModel,
   ExpressionController,
   ExpressionInfo,
@@ -121,6 +122,14 @@ export class MmdCharacterModel implements CharacterModel {
 
   update(delta: number): void {
     this.helper?.update(delta);
+  }
+
+  prepareFrame(context: CharacterFrameContext): void {
+    void context;
+  }
+
+  finalizeFrame(context: CharacterFrameContext): void {
+    void context;
   }
 
   dispose(): void {
