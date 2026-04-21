@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useThree } from "@react-three/fiber";
 import { Grid } from "@react-three/drei";
 import * as THREE from "three";
@@ -18,7 +18,11 @@ function isHdr(url: string): boolean {
 export default function SceneEnvironment({
   viewerSettings,
 }: SceneEnvironmentProps) {
-  const { scene, gl, invalidate } = useThree();
+  const { gl, invalidate } = useThree();
+  const [backgroundTexture, setBackgroundTexture] = useState<{
+    texture: THREE.Texture;
+    url: string;
+  } | null>(null);
 
   const {
     showGrid,
@@ -37,17 +41,11 @@ export default function SceneEnvironment({
     const tex = loader.load(groundTextureUrl, () => invalidate());
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(groundTextureRepeat, groundTextureRepeat);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = gl.capabilities.getMaxAnisotropy();
     return tex;
-  }, [groundTextureUrl, gl, invalidate]);
-
-  useEffect(() => {
-    if (!groundTexture) return;
-    groundTexture.repeat.set(groundTextureRepeat, groundTextureRepeat);
-    groundTexture.needsUpdate = true;
-    invalidate();
-  }, [groundTexture, groundTextureRepeat, invalidate]);
+  }, [groundTextureUrl, groundTextureRepeat, gl, invalidate]);
 
   useEffect(() => {
     return () => {
@@ -61,42 +59,44 @@ export default function SceneEnvironment({
     let createdTexture: THREE.Texture | null = null;
 
     if (!backgroundTextureUrl) {
-      scene.background = new THREE.Color(backgroundColor);
       invalidate();
       return () => {};
     }
 
-    const applyTexture = (tex: THREE.Texture) => {
+    const applyTexture = (
+      tex: THREE.Texture,
+      configure?: (texture: THREE.Texture) => void,
+    ) => {
+      configure?.(tex);
       if (disposed) {
         tex.dispose();
         return;
       }
-      if (backgroundIsEquirect) {
-        tex.mapping = THREE.EquirectangularReflectionMapping;
-      }
-      tex.colorSpace = THREE.SRGBColorSpace;
-      scene.background = tex;
       createdTexture = tex;
-      invalidate();
+      setBackgroundTexture({ texture: tex, url: backgroundTextureUrl });
     };
 
     if (isHdr(backgroundTextureUrl)) {
       const loader = new RGBELoader();
       loader.load(backgroundTextureUrl, (tex) => {
-        tex.mapping = backgroundIsEquirect
-          ? THREE.EquirectangularReflectionMapping
-          : THREE.UVMapping;
-        if (disposed) {
-          tex.dispose();
-          return;
-        }
-        scene.background = tex;
-        createdTexture = tex;
+        applyTexture(tex, (loadedTexture) => {
+          loadedTexture.mapping = backgroundIsEquirect
+            ? THREE.EquirectangularReflectionMapping
+            : THREE.UVMapping;
+        });
         invalidate();
       });
     } else {
       const loader = new THREE.TextureLoader();
-      loader.load(backgroundTextureUrl, applyTexture);
+      loader.load(backgroundTextureUrl, (tex) => {
+        applyTexture(tex, (loadedTexture) => {
+          if (backgroundIsEquirect) {
+            loadedTexture.mapping = THREE.EquirectangularReflectionMapping;
+          }
+          loadedTexture.colorSpace = THREE.SRGBColorSpace;
+        });
+        invalidate();
+      });
     }
 
     return () => {
@@ -104,15 +104,21 @@ export default function SceneEnvironment({
       createdTexture?.dispose();
     };
   }, [
-    scene,
     backgroundTextureUrl,
     backgroundIsEquirect,
-    backgroundColor,
     invalidate,
   ]);
 
   return (
     <>
+      {backgroundTextureUrl ? (
+        backgroundTexture?.url === backgroundTextureUrl && (
+          <primitive attach="background" object={backgroundTexture.texture} />
+        )
+      ) : (
+        <color attach="background" args={[backgroundColor]} />
+      )}
+
       {showGrid && (
         <Grid
           args={[50, 50]}
