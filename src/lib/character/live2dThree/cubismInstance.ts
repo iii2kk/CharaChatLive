@@ -469,22 +469,85 @@ function uploadImageAsTexture(
 ): WebGLTexture {
   const tex = gl.createTexture();
   if (!tex) throw new Error("gl.createTexture failed");
+
+  // Three.js が直前の別テクスチャ upload で設定した UNPACK_* 状態を引きずると、
+  // Cubism の atlas texture が壊れることがある。特に ground/background を先に
+  // 読み込んだ後は UNPACK_FLIP_Y_WEBGL=true が残りやすいので、ここで明示する。
+  const prevFlipY = gl.getParameter(gl.UNPACK_FLIP_Y_WEBGL) as boolean;
+  const prevPremultiplyAlpha = gl.getParameter(
+    gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL
+  ) as boolean;
+  const prevAlignment = gl.getParameter(gl.UNPACK_ALIGNMENT) as number;
+
+  const hasUnpackColorspaceConversion =
+    "UNPACK_COLORSPACE_CONVERSION_WEBGL" in gl &&
+    "BROWSER_DEFAULT_WEBGL" in gl;
+  const prevColorspaceConversion = hasUnpackColorspaceConversion
+    ? gl.getParameter(
+        (
+          gl as WebGLRenderingContext & {
+            UNPACK_COLORSPACE_CONVERSION_WEBGL: number;
+          }
+        ).UNPACK_COLORSPACE_CONVERSION_WEBGL
+      )
+    : null;
+
   gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
-  gl.texImage2D(
-    gl.TEXTURE_2D,
-    0,
-    gl.RGBA,
-    gl.RGBA,
-    gl.UNSIGNED_BYTE,
-    image
-  );
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-  gl.generateMipmap(gl.TEXTURE_2D);
-  gl.bindTexture(gl.TEXTURE_2D, null);
+
+  try {
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+    if (hasUnpackColorspaceConversion) {
+      gl.pixelStorei(
+        (
+          gl as WebGLRenderingContext & {
+            UNPACK_COLORSPACE_CONVERSION_WEBGL: number;
+            BROWSER_DEFAULT_WEBGL: number;
+          }
+        ).UNPACK_COLORSPACE_CONVERSION_WEBGL,
+        (
+          gl as WebGLRenderingContext & {
+            BROWSER_DEFAULT_WEBGL: number;
+          }
+        ).BROWSER_DEFAULT_WEBGL
+      );
+    }
+
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      image
+    );
+    gl.texParameteri(
+      gl.TEXTURE_2D,
+      gl.TEXTURE_MIN_FILTER,
+      gl.LINEAR_MIPMAP_LINEAR
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.generateMipmap(gl.TEXTURE_2D);
+  } finally {
+    if (hasUnpackColorspaceConversion && prevColorspaceConversion !== null) {
+      gl.pixelStorei(
+        (
+          gl as WebGLRenderingContext & {
+            UNPACK_COLORSPACE_CONVERSION_WEBGL: number;
+          }
+        ).UNPACK_COLORSPACE_CONVERSION_WEBGL,
+        prevColorspaceConversion as number
+      );
+    }
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, prevAlignment);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, prevPremultiplyAlpha);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, prevFlipY);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+  }
+
   return tex;
 }
 
