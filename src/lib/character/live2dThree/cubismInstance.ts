@@ -73,38 +73,86 @@ export class CubismInstance extends CubismUserModel {
     this._canvasWidth = this._model.getCanvasWidth();
     this._canvasHeight = this._model.getCanvasHeight();
 
+    // moc3 以降のアセットは相互依存しないので、fetch を全部並列に発火して
+    // ブラウザの同時接続数を使い切る。パースは main thread で直列に行う。
+    const fetchOrNull = (url: string | null): Promise<ArrayBuffer | null> =>
+      url ? fetchArrayBuffer(url) : Promise.resolve(null);
+
     // --- expressions
-    const expCount = setting.getExpressionCount();
-    for (let i = 0; i < expCount; i++) {
-      const name = setting.getExpressionName(i);
-      const file = setting.getExpressionFileName(i);
-      const url = resolveAsset(file);
-      if (!url) continue;
-      const buf = await fetchArrayBuffer(url);
-      const exp = CubismExpressionMotion.create(buf, buf.byteLength);
-      if (exp) {
-        this._expressions.set(name, exp);
+    const expressionJobs: Array<{ name: string; url: string }> = [];
+    {
+      const expCount = setting.getExpressionCount();
+      for (let i = 0; i < expCount; i++) {
+        const name = setting.getExpressionName(i);
+        const file = setting.getExpressionFileName(i);
+        const url = resolveAsset(file);
+        if (!url) continue;
+        expressionJobs.push({ name, url });
       }
     }
 
-    // --- physics
-    const physicsName = setting.getPhysicsFileName();
-    if (physicsName) {
-      const url = resolveAsset(physicsName);
-      if (url) {
-        const buf = await fetchArrayBuffer(url);
-        this.loadPhysics(buf, buf.byteLength);
+    // --- motions (全グループ、全モーションを事前ロード)
+    const motionJobs: Array<{
+      key: string;
+      group: string;
+      index: number;
+      url: string;
+    }> = [];
+    {
+      const motionGroupCount = setting.getMotionGroupCount();
+      for (let g = 0; g < motionGroupCount; g++) {
+        const group = setting.getMotionGroupName(g);
+        const count = setting.getMotionCount(group);
+        for (let i = 0; i < count; i++) {
+          const file = setting.getMotionFileName(group, i);
+          const url = resolveAsset(file);
+          if (!url) continue;
+          motionJobs.push({ key: `${group}_${i}`, group, index: i, url });
+        }
       }
+    }
+
+    const physicsUrl = setting.getPhysicsFileName()
+      ? resolveAsset(setting.getPhysicsFileName())
+      : null;
+    const poseUrl = setting.getPoseFileName()
+      ? resolveAsset(setting.getPoseFileName())
+      : null;
+    const userdataUrl = setting.getUserDataFile()
+      ? resolveAsset(setting.getUserDataFile())
+      : null;
+
+    const [
+      expressionBuffers,
+      motionBuffers,
+      physicsBuffer,
+      poseBuffer,
+      userdataBuffer,
+    ] = await Promise.all([
+      Promise.all(expressionJobs.map((j) => fetchArrayBuffer(j.url))),
+      Promise.all(motionJobs.map((j) => fetchArrayBuffer(j.url))),
+      fetchOrNull(physicsUrl),
+      fetchOrNull(poseUrl),
+      fetchOrNull(userdataUrl),
+    ]);
+
+    // --- expressions (parse)
+    expressionJobs.forEach((job, idx) => {
+      const buf = expressionBuffers[idx];
+      const exp = CubismExpressionMotion.create(buf, buf.byteLength);
+      if (exp) {
+        this._expressions.set(job.name, exp);
+      }
+    });
+
+    // --- physics
+    if (physicsBuffer) {
+      this.loadPhysics(physicsBuffer, physicsBuffer.byteLength);
     }
 
     // --- pose
-    const poseName = setting.getPoseFileName();
-    if (poseName) {
-      const url = resolveAsset(poseName);
-      if (url) {
-        const buf = await fetchArrayBuffer(url);
-        this.loadPose(buf, buf.byteLength);
-      }
+    if (poseBuffer) {
+      this.loadPose(poseBuffer, poseBuffer.byteLength);
     }
 
     // --- eye blink
@@ -158,13 +206,8 @@ export class CubismInstance extends CubismUserModel {
     }
 
     // --- user data
-    const userdataName = setting.getUserDataFile();
-    if (userdataName) {
-      const url = resolveAsset(userdataName);
-      if (url) {
-        const buf = await fetchArrayBuffer(url);
-        this.loadUserData(buf, buf.byteLength);
-      }
+    if (userdataBuffer) {
+      this.loadUserData(userdataBuffer, userdataBuffer.byteLength);
     }
 
     // --- eye blink parameter ids
@@ -176,31 +219,23 @@ export class CubismInstance extends CubismUserModel {
       this._eyeBlink.setParameterIds(ids);
     }
 
-    // --- motions (全グループ、全モーションを事前ロード)
-    const motionGroupCount = setting.getMotionGroupCount();
-    for (let g = 0; g < motionGroupCount; g++) {
-      const group = setting.getMotionGroupName(g);
-      const count = setting.getMotionCount(group);
-      for (let i = 0; i < count; i++) {
-        const file = setting.getMotionFileName(group, i);
-        const url = resolveAsset(file);
-        if (!url) continue;
-        const buf = await fetchArrayBuffer(url);
-        const motion = this.loadMotion(
-          buf,
-          buf.byteLength,
-          `${group}_${i}`,
-          undefined,
-          undefined,
-          setting,
-          group,
-          i
-        );
-        if (motion) {
-          this._motions.set(`${group}_${i}`, motion);
-        }
+    // --- motions (parse)
+    motionJobs.forEach((job, idx) => {
+      const buf = motionBuffers[idx];
+      const motion = this.loadMotion(
+        buf,
+        buf.byteLength,
+        job.key,
+        undefined,
+        undefined,
+        setting,
+        job.group,
+        job.index
+      );
+      if (motion) {
+        this._motions.set(job.key, motion);
       }
-    }
+    });
 
     // CubismModelMatrix は loadModel の中で (cw, ch) + setHeight(2.0) 済み。
     // 縦長キャンバスの場合のみ setWidth(2.0) に差し替えて幅を埋める（LAppModel 標準パターン）。
@@ -230,16 +265,21 @@ export class CubismInstance extends CubismUserModel {
     renderer.setIsPremultipliedAlpha(true);
     renderer.startUp(gl);
 
-    // --- textures: setting.getTextureFileName(i) を fetch → Image → WebGLTexture
+    // --- textures: Image のデコードは並列、GL への upload/bind だけ直列で行う。
     const texCount = this._setting.getTextureCount();
+    const texJobs: Array<{ index: number; url: string }> = [];
     for (let i = 0; i < texCount; i++) {
       const texFile = this._setting.getTextureFileName(i);
       const url = resolveAsset(texFile);
       if (!url) continue;
-      const glTexture = await createGLTextureFromUrl(gl, url);
-      this._textures.push(glTexture);
-      renderer.bindTexture(i, glTexture);
+      texJobs.push({ index: i, url });
     }
+    const images = await Promise.all(texJobs.map((j) => loadImage(j.url)));
+    texJobs.forEach((job, idx) => {
+      const glTexture = uploadImageAsTexture(gl, images[idx]);
+      this._textures.push(glTexture);
+      renderer.bindTexture(job.index, glTexture);
+    });
   }
 
   /**
@@ -403,11 +443,10 @@ export class CubismInstance extends CubismUserModel {
 // helpers
 // ──────────────────────────────────────────────
 
-async function createGLTextureFromUrl(
+function uploadImageAsTexture(
   gl: WebGL2RenderingContext | WebGLRenderingContext,
-  url: string
-): Promise<WebGLTexture> {
-  const image = await loadImage(url);
+  image: HTMLImageElement
+): WebGLTexture {
   const tex = gl.createTexture();
   if (!tex) throw new Error("gl.createTexture failed");
   gl.bindTexture(gl.TEXTURE_2D, tex);
