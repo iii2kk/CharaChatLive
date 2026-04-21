@@ -17,11 +17,6 @@ import {
   setLive2DResolutionConfig,
 } from "@/lib/character/live2dThree/sharedAtlasRenderer";
 import { setThreeRendererRef } from "@/lib/character/live2dThree/threeRendererRef";
-import {
-  beginLive2DProfile,
-  endLive2DProfile,
-  markLive2DFrame,
-} from "@/lib/character/live2dProfile";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 
 interface CharacterModelsProps {
@@ -56,7 +51,6 @@ export default function CharacterModels({
   };
 
   useFrame((_, delta) => {
-    const frameStart = beginLive2DProfile();
     const deltaMs = delta * 1000;
     for (const model of models) {
       model.update(delta);
@@ -96,18 +90,13 @@ export default function CharacterModels({
           ? 0
           : live2dRenderAccumulatorMsRef.current % renderIntervalMs;
 
-        const sharedRenderStart = beginLive2DProfile();
         renderSharedLive2DAtlas(gl);
-        endLive2DProfile("live2d.frame.sharedRender", sharedRenderStart);
 
         for (const model of models) {
           model.afterSharedRender?.();
         }
       }
     }
-
-    endLive2DProfile("live2d.frame.total", frameStart);
-    markLive2DFrame(models.length);
 
     const highlightedModel =
       models.find((model) => model.id === highlightedModelId) ?? null;

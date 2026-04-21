@@ -27,10 +27,6 @@ import {
   type Live2DAtlasLayout,
 } from "./live2dThree/sharedAtlasRenderer";
 import { waitForThreeRenderer } from "./live2dThree/threeRendererRef";
-import {
-  beginLive2DProfile,
-  endLive2DProfile,
-} from "./live2dProfile";
 
 /**
  * 板ポリの高さ。MMD/VRM と並べたときの身長を合わせる目安値。
@@ -249,17 +245,8 @@ export class Live2dCharacterModel implements CharacterModel {
     if (this.paused) return;
 
     const dtMs = delta * 1000;
-    const updateStart = beginLive2DProfile();
-
-    const expressionStart = beginLive2DProfile();
     this.applySemanticParameters();
-    endLive2DProfile("live2d.update.expressions", expressionStart);
-
-    const cubismUpdateStart = beginLive2DProfile();
     this.instance.updateModel(dtMs);
-    endLive2DProfile("live2d.update.cubism", cubismUpdateStart);
-
-    endLive2DProfile("live2d.update.total", updateStart);
   }
 
   afterSharedRender(): void {
@@ -401,8 +388,6 @@ export class Live2dCharacterModel implements CharacterModel {
   private applyAtlasLayout(layout: Live2DAtlasLayout): void {
     if (this.disposed) return;
 
-    const layoutStart = beginLive2DProfile();
-
     this.currentAtlasLayout = layout;
     const nextSharedTexture = this.atlasHandle.getSharedTexture();
     if (this.sharedTexture !== nextSharedTexture) {
@@ -414,7 +399,6 @@ export class Live2dCharacterModel implements CharacterModel {
 
     const planeHeight = this.getPlaneHeight();
     const planeWidth = planeHeight * (layout.width / layout.height);
-    const geometryStart = beginLive2DProfile();
     this.planeMesh.geometry.dispose();
     this.planeMesh.geometry = this.createPlaneGeometry(
       planeWidth,
@@ -422,8 +406,6 @@ export class Live2dCharacterModel implements CharacterModel {
       layout
     );
     this.planeMesh.position.y = planeHeight / 2;
-    endLive2DProfile("live2d.layout.geometry", geometryStart);
-    endLive2DProfile("live2d.layout.total", layoutStart);
   }
 
   private getPlaneHeight(): number {
