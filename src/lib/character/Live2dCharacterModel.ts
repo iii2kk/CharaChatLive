@@ -225,6 +225,12 @@ export class Live2dCharacterModel implements CharacterModel {
       instance.getCanvasHeight(),
       opts.renderScale
     );
+    // 解像度デバッグ用: 実際に確保されたスロット寸法と入力値
+    console.log(
+      `[Live2D] ${opts.name}: canvas=${instance.getCanvasWidth()}x${instance.getCanvasHeight()}, ` +
+        `renderScale=${opts.renderScale}, slot=${width}x${height}, ` +
+        `viewport=${window.innerWidth}x${window.innerHeight}, DPR=${window.devicePixelRatio}`
+    );
     const atlasHandle = registerInstance(instance, width, height);
 
     return new Live2dCharacterModel({

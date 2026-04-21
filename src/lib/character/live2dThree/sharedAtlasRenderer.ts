@@ -31,52 +31,54 @@ interface Entry {
   onLayoutChange: ((layout: Live2DAtlasLayout) => void) | null;
 }
 
-const LIVE2D_CANVAS_RENDER_SCALE = 0.75;
+/**
+ * ユーザー設定 (viewerSettings.live2dCanvasScale) に上乗せする内部品質係数。
+ * 1.0 でユーザー値そのまま。上げると全モデルが一律に高解像度化する。
+ */
+const LIVE2D_CANVAS_QUALITY_MULTIPLIER = 1.25;
 const LIVE2D_CANVAS_MIN_EDGE = 256;
-const LIVE2D_CANVAS_MAX_EDGE = 2048;
-const LIVE2D_VIEWPORT_HEIGHT_USAGE = 0.7;
+const LIVE2D_CANVAS_MAX_EDGE = 4096;
+const LIVE2D_VIEWPORT_HEIGHT_USAGE = 1.0;
 
 /**
- * モデルの moc3 上の width/height から、Three の RenderTarget 内に確保する
- * スロット寸法を算出する。現行 live2dPixi.ts の実装を踏襲。
+ * Cubism の getCanvasWidth/Height はピクセル単位ではなく「モデル空間の単位」
+ * (多くは 1.0 前後の小さい値) を返す。なので元モデルのピクセル寸法を知ることは
+ * できない。代わりに
+ *   - モデル側からはアスペクト比 (modelWidth / modelHeight) だけ取る
+ *   - ピクセル解像度はビューポートと設定 (renderScale × QUALITY_MULTIPLIER) から決める
+ * という方針で、スロット高さを基準にアスペクト比で幅を計算する。
  */
 export function computeLive2DCanvasSize(
   modelWidth: number,
   modelHeight: number,
-  renderScale = LIVE2D_CANVAS_RENDER_SCALE
+  renderScale: number
 ): { width: number; height: number } {
-  const safeWidth = Math.max(1, modelWidth);
-  const safeHeight = Math.max(1, modelHeight);
+  const aspect =
+    Math.max(1e-6, modelWidth) / Math.max(1e-6, modelHeight);
 
-  const viewportWidth = window.innerWidth || 1280;
   const viewportHeight = window.innerHeight || 720;
   const viewportScale = Math.min(window.devicePixelRatio || 1, 2);
+  const effective = renderScale * LIVE2D_CANVAS_QUALITY_MULTIPLIER;
 
-  const maxTargetWidth = viewportWidth * viewportScale * renderScale;
-  const maxTargetHeight =
-    viewportHeight *
-    viewportScale *
-    LIVE2D_VIEWPORT_HEIGHT_USAGE *
-    renderScale;
+  // 目標の描画高さ（ピクセル）。ビューポート高さ × 使用率 × 効きかけたスケール
+  let height =
+    viewportHeight * viewportScale * LIVE2D_VIEWPORT_HEIGHT_USAGE * effective;
+  let width = height * aspect;
 
-  let width = safeWidth;
-  let height = safeHeight;
-  let scale = 1;
-  if (width > maxTargetWidth || height > maxTargetHeight) {
-    scale = Math.min(maxTargetWidth / width, maxTargetHeight / height);
+  // 上限クランプ
+  const maxEdge = Math.max(width, height);
+  if (maxEdge > LIVE2D_CANVAS_MAX_EDGE) {
+    const s = LIVE2D_CANVAS_MAX_EDGE / maxEdge;
+    width *= s;
+    height *= s;
   }
-  width *= scale;
-  height *= scale;
 
-  if (Math.max(width, height) < LIVE2D_CANVAS_MIN_EDGE) {
-    const minScale = LIVE2D_CANVAS_MIN_EDGE / Math.max(width, height);
-    width *= minScale;
-    height *= minScale;
-  }
-  if (Math.max(width, height) > LIVE2D_CANVAS_MAX_EDGE) {
-    const maxScale = LIVE2D_CANVAS_MAX_EDGE / Math.max(width, height);
-    width *= maxScale;
-    height *= maxScale;
+  // 下限クランプ
+  const minEdge = Math.max(width, height);
+  if (minEdge < LIVE2D_CANVAS_MIN_EDGE) {
+    const s = LIVE2D_CANVAS_MIN_EDGE / minEdge;
+    width *= s;
+    height *= s;
   }
 
   return {

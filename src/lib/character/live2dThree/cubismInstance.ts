@@ -227,8 +227,8 @@ export class CubismInstance extends CubismUserModel {
     // 描画サイズは後で setRenderState で更新されるので、ここではダミー寸法で初期化
     this.createRenderer(this._canvasWidth, this._canvasHeight, 1);
     const renderer = this.getRenderer();
-    renderer.startUp(gl);
     renderer.setIsPremultipliedAlpha(true);
+    renderer.startUp(gl);
 
     // --- textures: setting.getTextureFileName(i) を fetch → Image → WebGLTexture
     const texCount = this._setting.getTextureCount();
