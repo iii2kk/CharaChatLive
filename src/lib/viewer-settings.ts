@@ -8,6 +8,12 @@ export interface ViewerSettings {
   live2dCanvasScale: number;
   live2dPlaneScale: number;
   live2dRenderFps: number;
+  /** 全 Live2D モデル共通。最終解像度に乗算される品質係数 (1.0=ベース) */
+  live2dQualityMultiplier: number;
+  /** 全 Live2D モデル共通。ビューポート高さに対するモデル描画解像度の割合 */
+  live2dViewportHeightUsage: number;
+  /** 全 Live2D モデル共通。スロットの片辺の上限 (VRAM 抑制用) */
+  live2dMaxEdge: number;
   physicsEnabled: boolean;
   gravityX: number;
   gravityY: number;
@@ -31,6 +37,9 @@ export const defaultViewerSettings: ViewerSettings = {
   live2dCanvasScale: 0.75,
   live2dPlaneScale: 1.17,
   live2dRenderFps: 60,
+  live2dQualityMultiplier: 1.25,
+  live2dViewportHeightUsage: 1.0,
+  live2dMaxEdge: 4096,
   physicsEnabled: true,
   gravityX: 0,
   gravityY: -98,

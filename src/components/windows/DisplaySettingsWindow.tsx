@@ -297,6 +297,83 @@ export default function DisplaySettingsWindow({
                 Live2D atlas の再描画頻度。低いほど軽くなります。
               </span>
             </label>
+            <label className="flex flex-col gap-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-300">Live2D 品質係数 (全体)</span>
+                <span className="text-gray-500">
+                  {viewerSettings.live2dQualityMultiplier.toFixed(2)}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0.5}
+                max={3.0}
+                step={0.05}
+                value={viewerSettings.live2dQualityMultiplier}
+                onChange={(e) =>
+                  handleViewerSettingChange(
+                    "live2dQualityMultiplier",
+                    Number(e.currentTarget.value)
+                  )
+                }
+                className="accent-blue-400"
+              />
+              <span className="text-[10px] text-gray-500">
+                全 Live2D モデル共通の解像度係数。上げるとシャープだが重くなる。
+              </span>
+            </label>
+            <label className="flex flex-col gap-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-300">
+                  Live2D ビューポート占有率
+                </span>
+                <span className="text-gray-500">
+                  {viewerSettings.live2dViewportHeightUsage.toFixed(2)}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0.3}
+                max={1.5}
+                step={0.05}
+                value={viewerSettings.live2dViewportHeightUsage}
+                onChange={(e) =>
+                  handleViewerSettingChange(
+                    "live2dViewportHeightUsage",
+                    Number(e.currentTarget.value)
+                  )
+                }
+                className="accent-blue-400"
+              />
+              <span className="text-[10px] text-gray-500">
+                ビューポート高さに対する描画解像度の割合 (1.0 で等倍)。
+              </span>
+            </label>
+            <label className="flex flex-col gap-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-300">Live2D 上限サイズ</span>
+                <span className="text-gray-500">
+                  {viewerSettings.live2dMaxEdge.toFixed(0)}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={512}
+                max={8192}
+                step={256}
+                value={viewerSettings.live2dMaxEdge}
+                onChange={(e) =>
+                  handleViewerSettingChange(
+                    "live2dMaxEdge",
+                    Number(e.currentTarget.value)
+                  )
+                }
+                className="accent-blue-400"
+              />
+              <span className="text-[10px] text-gray-500">
+                スロット片辺の上限 (VRAM 抑制用)。2048〜4096 推奨。
+              </span>
+            </label>
           </>
         )}
       </div>

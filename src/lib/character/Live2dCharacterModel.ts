@@ -294,6 +294,11 @@ export class Live2dCharacterModel implements CharacterModel {
     this.resizeCanvasForCurrentViewport();
   }
 
+  /** グローバル解像度設定 (quality multiplier 等) が変わったとき再計算させる */
+  refreshAtlasSize(): void {
+    this.resizeCanvasForCurrentViewport();
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;

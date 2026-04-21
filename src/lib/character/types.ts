@@ -119,5 +119,7 @@ export interface CharacterModel {
   setDisplayScale?(scale: number): void;
   /** カメラ距離に応じた解像度係数を設定する (Live2D のみ) */
   setDistanceScale?(factor: number): void;
+  /** グローバル解像度設定変更時の再計算 (Live2D のみ) */
+  refreshAtlasSize?(): void;
   dispose(): void;
 }

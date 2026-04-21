@@ -12,7 +12,10 @@ import {
   setModelLayoutOffset,
   type ModelInteractionMetrics,
 } from "@/lib/character/modelTransform";
-import { renderSharedLive2DAtlas } from "@/lib/character/live2dThree/sharedAtlasRenderer";
+import {
+  renderSharedLive2DAtlas,
+  setLive2DResolutionConfig,
+} from "@/lib/character/live2dThree/sharedAtlasRenderer";
 import { setThreeRendererRef } from "@/lib/character/live2dThree/threeRendererRef";
 import {
   beginLive2DProfile,
@@ -262,6 +265,25 @@ export default function CharacterModels({
       setThreeRendererRef(null);
     };
   }, [gl]);
+
+  // Live2D グローバル品質設定を sharedAtlasRenderer に反映し、既存モデルを refresh
+  useEffect(() => {
+    setLive2DResolutionConfig({
+      qualityMultiplier: viewerSettings.live2dQualityMultiplier,
+      viewportHeightUsage: viewerSettings.live2dViewportHeightUsage,
+      maxEdge: viewerSettings.live2dMaxEdge,
+    });
+    for (const model of models) {
+      if (model.kind === "live2d") {
+        model.refreshAtlasSize?.();
+      }
+    }
+  }, [
+    models,
+    viewerSettings.live2dQualityMultiplier,
+    viewerSettings.live2dViewportHeightUsage,
+    viewerSettings.live2dMaxEdge,
+  ]);
 
   return (
     <>

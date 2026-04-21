@@ -32,13 +32,36 @@ interface Entry {
 }
 
 /**
- * ユーザー設定 (viewerSettings.live2dCanvasScale) に上乗せする内部品質係数。
- * 1.0 でユーザー値そのまま。上げると全モデルが一律に高解像度化する。
+ * 解像度計算に使うグローバル設定。viewerSettings から UI 経由で更新される。
+ * setLive2DResolutionConfig で差し替えると、以降 computeLive2DCanvasSize が
+ * 新しい値を使う。既存モデルに反映させるには各モデルの refreshAtlasSize() を
+ * 呼ぶ必要がある (CharacterModels.tsx 側で実施)。
  */
-const LIVE2D_CANVAS_QUALITY_MULTIPLIER = 1.25;
-const LIVE2D_CANVAS_MIN_EDGE = 256;
-const LIVE2D_CANVAS_MAX_EDGE = 4096;
-const LIVE2D_VIEWPORT_HEIGHT_USAGE = 1.0;
+export interface Live2DResolutionConfig {
+  qualityMultiplier: number;
+  viewportHeightUsage: number;
+  maxEdge: number;
+  minEdge: number;
+}
+
+const LIVE2D_CANVAS_MIN_EDGE_DEFAULT = 256;
+
+let resolutionConfig: Live2DResolutionConfig = {
+  qualityMultiplier: 1.25,
+  viewportHeightUsage: 1.0,
+  maxEdge: 4096,
+  minEdge: LIVE2D_CANVAS_MIN_EDGE_DEFAULT,
+};
+
+export function setLive2DResolutionConfig(
+  patch: Partial<Live2DResolutionConfig>
+): void {
+  resolutionConfig = { ...resolutionConfig, ...patch };
+}
+
+export function getLive2DResolutionConfig(): Readonly<Live2DResolutionConfig> {
+  return resolutionConfig;
+}
 
 /**
  * Cubism の getCanvasWidth/Height はピクセル単位ではなく「モデル空間の単位」
@@ -53,30 +76,31 @@ export function computeLive2DCanvasSize(
   modelHeight: number,
   renderScale: number
 ): { width: number; height: number } {
+  const cfg = resolutionConfig;
   const aspect =
     Math.max(1e-6, modelWidth) / Math.max(1e-6, modelHeight);
 
   const viewportHeight = window.innerHeight || 720;
   const viewportScale = Math.min(window.devicePixelRatio || 1, 2);
-  const effective = renderScale * LIVE2D_CANVAS_QUALITY_MULTIPLIER;
+  const effective = renderScale * cfg.qualityMultiplier;
 
   // 目標の描画高さ（ピクセル）。ビューポート高さ × 使用率 × 効きかけたスケール
   let height =
-    viewportHeight * viewportScale * LIVE2D_VIEWPORT_HEIGHT_USAGE * effective;
+    viewportHeight * viewportScale * cfg.viewportHeightUsage * effective;
   let width = height * aspect;
 
   // 上限クランプ
   const maxEdge = Math.max(width, height);
-  if (maxEdge > LIVE2D_CANVAS_MAX_EDGE) {
-    const s = LIVE2D_CANVAS_MAX_EDGE / maxEdge;
+  if (maxEdge > cfg.maxEdge) {
+    const s = cfg.maxEdge / maxEdge;
     width *= s;
     height *= s;
   }
 
   // 下限クランプ
   const minEdge = Math.max(width, height);
-  if (minEdge < LIVE2D_CANVAS_MIN_EDGE) {
-    const s = LIVE2D_CANVAS_MIN_EDGE / minEdge;
+  if (minEdge < cfg.minEdge) {
+    const s = cfg.minEdge / minEdge;
     width *= s;
     height *= s;
   }
