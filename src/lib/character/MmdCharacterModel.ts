@@ -16,8 +16,16 @@ import type {
   CharacterModel,
   ExpressionController,
   ExpressionInfo,
+  MotionCapability,
+  MotionHandle,
+  MotionInfo,
+  MotionLibrary,
   PhysicsController,
+  PlayOptions,
 } from "./types";
+import { MotionHandleDisposedError } from "./types";
+import { AnimationEventEmitter } from "./animationEvents";
+import { MutableMotionMapping } from "./MotionMapping";
 import { buildLoadingManager, revokeFileMapUrls } from "./urlModifier";
 
 interface MmdPhysicsState {
@@ -37,8 +45,12 @@ interface MmdHelperMeshState {
   physics?: { setGravity(gravity: THREE.Vector3): void };
 }
 
+interface MmdHelperMeshStateWithMixer extends MmdHelperMeshState {
+  mixer?: THREE.AnimationMixer;
+}
+
 type HelperWithInternals = MMDAnimationHelper & {
-  objects?: WeakMap<THREE.SkinnedMesh, MmdHelperMeshState>;
+  objects?: WeakMap<THREE.SkinnedMesh, MmdHelperMeshStateWithMixer>;
 };
 
 function getPhysicsControllerFromHelper(
@@ -48,6 +60,80 @@ function getPhysicsControllerFromHelper(
   if (!helper) return null;
   return (helper as HelperWithInternals).objects?.get(mesh)?.physics ?? null;
 }
+
+function getMixerFromHelper(
+  helper: MMDAnimationHelper | null,
+  mesh: THREE.SkinnedMesh
+): THREE.AnimationMixer | null {
+  if (!helper) return null;
+  return (helper as HelperWithInternals).objects?.get(mesh)?.mixer ?? null;
+}
+
+interface MmdMotionEntry {
+  handle: MotionHandle;
+  info: MotionInfo;
+  clip: THREE.AnimationClip;
+  disposed: boolean;
+}
+
+// VMD ファイルはボーン名・モーフ名等を固定長バッファに格納し、
+// 空き領域にゴミ/ヌルバイトが入っていることがある。mmdparser はこのゴミを
+// Shift_JIS として復号しようとして 'unknown char code NN.' を console.error
+// で出力する。これは実害が無く (モーションは正常にロードされる) VMD 側の
+// 実データの仕様なので、既知ノイズとして console.error → console.warn に
+// 降格させて Next.js の Console Error オーバーレイを抑制する。
+const inFlightLoads = new Set<string>();
+let consoleHookInstalled = false;
+
+function ensureMmdParserConsoleHook(): void {
+  if (consoleHookInstalled) return;
+  if (typeof window === "undefined") return;
+  consoleHookInstalled = true;
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    if (
+      typeof args[0] === "string" &&
+      args[0].startsWith("unknown char code")
+    ) {
+      // 既知ノイズ。warn に降格してオーバーレイを出さない。
+      console.warn(
+        "[mmdparser] VMD 内の文字列パディング領域の復号失敗 (無害):",
+        args[0]
+      );
+      return;
+    }
+    original.apply(console, args as Parameters<typeof console.error>);
+  };
+}
+
+function trackInFlightLoad(url: string): void {
+  ensureMmdParserConsoleHook();
+  inFlightLoads.add(url);
+}
+
+function untrackInFlightLoad(url: string): void {
+  inFlightLoads.delete(url);
+}
+
+function deriveMotionName(urls: string[]): string {
+  const url = urls[0];
+  if (!url) return "motion";
+  try {
+    const path = new URL(url, "http://local/").pathname;
+    const base = path.split("/").pop() ?? "motion";
+    return decodeURIComponent(base);
+  } catch {
+    return url;
+  }
+}
+
+const MMD_CAPABILITY: MotionCapability = {
+  layers: ["base"],
+  crossfade: false,
+  seek: false,
+  externalLoad: true,
+  embeddedLibrary: false,
+};
 
 export class MmdCharacterModel implements CharacterModel {
   readonly id: string;
@@ -59,6 +145,7 @@ export class MmdCharacterModel implements CharacterModel {
   readonly expressionMapping: MutableExpressionMapping;
   readonly bones: BoneController;
   readonly animation: AnimationController;
+  readonly motionMapping: MutableMotionMapping;
   readonly physics: PhysicsController;
 
   private mesh: THREE.SkinnedMesh;
@@ -68,6 +155,12 @@ export class MmdCharacterModel implements CharacterModel {
   private physicsEnabled: boolean;
   private gravity: THREE.Vector3;
   private rebuildToken = 0;
+
+  private motionEntries = new Map<string, MmdMotionEntry>();
+  private motionCounter = 0;
+  private activeBase: MmdMotionEntry | null = null;
+  private events = new AnimationEventEmitter();
+  private mixerListenersBound = false;
 
   constructor(opts: MmdConstructorOptions) {
     this.id = opts.id;
@@ -84,7 +177,24 @@ export class MmdCharacterModel implements CharacterModel {
     );
     this.bones = this.createBoneController();
     this.animation = this.createAnimationController();
+    this.motionMapping = new MutableMotionMapping();
+    this.motionMapping.subscribe(() => {
+      this.applyIdleMotion();
+    });
     this.physics = this.createPhysicsController();
+  }
+
+  private applyIdleMotion(): void {
+    const id = this.motionMapping.idle;
+    if (!id) {
+      this.animation.stopLayer("base");
+      return;
+    }
+    const handle = this.animation.library
+      .list()
+      .find((h) => h.id === id);
+    if (!handle) return;
+    void this.animation.play(handle, "base", { loop: true });
   }
 
   static load(opts: {
@@ -142,6 +252,10 @@ export class MmdCharacterModel implements CharacterModel {
       this.helper = null;
     }
     this.animationClip = null;
+    this.activeBase = null;
+    this.motionEntries.clear();
+    this.events.clear();
+    this.mixerListenersBound = false;
 
     this.mesh.geometry.dispose();
     const materials = Array.isArray(this.mesh.material)
@@ -175,6 +289,7 @@ export class MmdCharacterModel implements CharacterModel {
         // ignore
       }
       this.helper = null;
+      this.mixerListenersBound = false;
     }
 
     if (!this.animationClip && !this.physicsEnabled) {
@@ -259,41 +374,172 @@ export class MmdCharacterModel implements CharacterModel {
     };
   }
 
+  private loadClipFromUrls(
+    urls: string[],
+    fileMap: FileMap | null
+  ): Promise<THREE.AnimationClip> {
+    const manager = buildLoadingManager(fileMap ?? this.fileMap);
+    const loader = new MMDLoader(manager);
+    const targetLabel = urls.length === 1 ? urls[0] : urls.join(" + ");
+
+    trackInFlightLoad(targetLabel);
+
+    return new Promise<THREE.AnimationClip>((resolve, reject) => {
+      loader.loadAnimation(
+        urls.length === 1 ? urls[0] : urls,
+        this.mesh,
+        (result) => {
+          untrackInFlightLoad(targetLabel);
+          resolve(Array.isArray(result) ? result[0] : result);
+        },
+        undefined,
+        (err) => {
+          untrackInFlightLoad(targetLabel);
+          console.error(`[MMD] VMD 読み込み失敗: ${targetLabel}`, err);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
+      );
+    });
+  }
+
+  private buildMotionInfo(
+    handle: MotionHandle,
+    clip: THREE.AnimationClip,
+    name: string
+  ): MotionInfo {
+    return {
+      id: handle.id,
+      name,
+      durationSec: clip.duration,
+      loopable: true,
+      source: "vmd",
+      embedded: false,
+    };
+  }
+
+  private createMotionLibrary(): MotionLibrary {
+    const mkId = () => `vmd:${++this.motionCounter}`;
+    return {
+      load: async (urls, fileMap, opts) => {
+        if (urls.length === 0) {
+          throw new Error("MMD library.load: urls が空です");
+        }
+        const clip = await this.loadClipFromUrls(urls, fileMap);
+        const handle: MotionHandle = { id: mkId(), source: "vmd" };
+        const name = opts?.name ?? clip.name ?? "vmd-motion";
+        const entry: MmdMotionEntry = {
+          handle,
+          info: this.buildMotionInfo(handle, clip, name),
+          clip,
+          disposed: false,
+        };
+        this.motionEntries.set(handle.id, entry);
+        return handle;
+      },
+      list: () =>
+        Array.from(this.motionEntries.values())
+          .filter((e) => !e.disposed)
+          .map((e) => e.handle),
+      listEmbedded: () => [],
+      getInfo: (handle) => {
+        const entry = this.motionEntries.get(handle.id);
+        if (!entry || entry.disposed) {
+          throw new MotionHandleDisposedError(handle.id);
+        }
+        return entry.info;
+      },
+      dispose: (handle) => {
+        const entry = this.motionEntries.get(handle.id);
+        if (!entry || entry.disposed) return;
+        entry.disposed = true;
+        if (this.activeBase === entry) {
+          this.stopBaseInternal();
+        }
+        this.motionEntries.delete(handle.id);
+      },
+    };
+  }
+
+  private ensureMixerListeners(): void {
+    if (this.mixerListenersBound) return;
+    const mixer = getMixerFromHelper(this.helper, this.mesh);
+    if (!mixer) return;
+    mixer.addEventListener("finished", () => {
+      const entry = this.activeBase;
+      if (!entry) return;
+      this.events.emit({
+        type: "end",
+        layer: "base",
+        handle: entry.handle,
+      });
+    });
+    mixer.addEventListener("loop", () => {
+      const entry = this.activeBase;
+      if (!entry) return;
+      this.events.emit({
+        type: "loop",
+        layer: "base",
+        handle: entry.handle,
+      });
+    });
+    this.mixerListenersBound = true;
+  }
+
+  private stopBaseInternal(): void {
+    if (!this.helper) {
+      this.activeBase = null;
+      this.animationClip = null;
+      return;
+    }
+    try {
+      this.helper.remove(this.mesh);
+    } catch {
+      // ignore
+    }
+    this.helper = null;
+    this.mixerListenersBound = false;
+    this.animationClip = null;
+    this.activeBase = null;
+  }
+
+  private async playBase(
+    entry: MmdMotionEntry,
+    opts: PlayOptions | undefined
+  ): Promise<void> {
+    // MMD は hard-cut 切替 (crossfade 未対応)
+    if (this.activeBase && this.activeBase !== entry) {
+      const prev = this.activeBase;
+      this.events.emit({ type: "end", layer: "base", handle: prev.handle });
+    }
+    this.animationClip = entry.clip;
+    this.activeBase = entry;
+    await this.rebuildHelper();
+    this.ensureMixerListeners();
+
+    const mixer = getMixerFromHelper(this.helper, this.mesh);
+    if (mixer) {
+      mixer.timeScale = opts?.speed ?? 1;
+    }
+
+    this.events.emit({ type: "start", layer: "base", handle: entry.handle });
+  }
+
   private createAnimationController(): AnimationController {
+    const library = this.createMotionLibrary();
     return {
       getCurrentClip: () => this.animationClip,
       isLoaded: () => this.animationClip !== null,
       loadAndPlay: async (urls, fileMap) => {
         if (urls.length === 0) return;
-        const manager = buildLoadingManager(fileMap ?? this.fileMap);
-        const loader = new MMDLoader(manager);
-        const clip = await new Promise<THREE.AnimationClip>(
-          (resolve, reject) => {
-            loader.loadAnimation(
-              urls.length === 1 ? urls[0] : urls,
-              this.mesh,
-              (result) => {
-                resolve(Array.isArray(result) ? result[0] : result);
-              },
-              undefined,
-              (err) => {
-                reject(err instanceof Error ? err : new Error(String(err)));
-              }
-            );
-          }
-        );
-        this.animationClip = clip;
-        await this.rebuildHelper();
+        const handle = await library.load(urls, fileMap, {
+          name: deriveMotionName(urls),
+        });
+        const entry = this.motionEntries.get(handle.id);
+        if (!entry) return;
+        await this.playBase(entry, { loop: true });
       },
       stop: () => {
-        if (!this.helper) return;
-        try {
-          this.helper.remove(this.mesh);
-        } catch {
-          // ignore
-        }
-        this.helper = null;
-        this.animationClip = null;
+        this.stopBaseInternal();
       },
       setPaused: (paused) => {
         if (!this.helper) return;
@@ -302,6 +548,36 @@ export class MmdCharacterModel implements CharacterModel {
       setTime: () => {
         // MMDAnimationHelper は外部からの seek API を持たないため未対応
       },
+
+      library,
+      capabilities: MMD_CAPABILITY,
+      play: async (handle, layer, opts) => {
+        const entry = this.motionEntries.get(handle.id);
+        if (!entry || entry.disposed) {
+          throw new MotionHandleDisposedError(handle.id);
+        }
+        if (layer === "overlay") {
+          console.warn("[MMD] overlay レイヤーは未対応のため no-op");
+          return;
+        }
+        await this.playBase(entry, opts);
+      },
+      stopLayer: (layer) => {
+        if (layer !== "base") return;
+        this.stopBaseInternal();
+      },
+      setLayerSpeed: (layer, timeScale) => {
+        if (layer !== "base") return;
+        const mixer = getMixerFromHelper(this.helper, this.mesh);
+        if (mixer) {
+          mixer.timeScale = timeScale;
+        }
+      },
+      getActive: (layer) => {
+        if (layer !== "base") return null;
+        return this.activeBase?.info ?? null;
+      },
+      on: (event, cb) => this.events.on(event, cb),
     };
   }
 

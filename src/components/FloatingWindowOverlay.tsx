@@ -24,6 +24,7 @@ import EnvironmentLightWindow from "@/components/windows/EnvironmentLightWindow"
 import InteractionModeWindow from "@/components/windows/InteractionModeWindow";
 import DisplaySettingsWindow from "@/components/windows/DisplaySettingsWindow";
 import ExpressionControlWindow from "@/components/windows/ExpressionControlWindow";
+import MotionControlWindow from "@/components/windows/MotionControlWindow";
 import MenuWindow from "@/components/windows/MenuWindow";
 
 interface FloatingWindowOverlayProps {
@@ -281,6 +282,19 @@ export default function FloatingWindowOverlay({
         onClose={() => closeWindow("expressionControl")}
       >
         <ExpressionControlWindow activeModel={activeModel} />
+      </FloatingWindow>
+
+      {/* Motion Control */}
+      <FloatingWindow
+        title={WINDOW_LABELS.motionControl}
+        visible={windowStates.motionControl.visible}
+        zIndex={windowStates.motionControl.zIndex}
+        position={windowStates.motionControl.position}
+        onPositionChange={(pos) => setPosition("motionControl", pos)}
+        onFocus={() => bringToFront("motionControl")}
+        onClose={() => closeWindow("motionControl")}
+      >
+        <MotionControlWindow activeModel={activeModel} />
       </FloatingWindow>
     </div>
   );

@@ -20,7 +20,8 @@ export type WindowId =
   | "environmentLight"
   | "interactionMode"
   | "displaySettings"
-  | "expressionControl";
+  | "expressionControl"
+  | "motionControl";
 
 export const WINDOW_IDS: WindowId[] = [
   "menu",
@@ -33,6 +34,7 @@ export const WINDOW_IDS: WindowId[] = [
   "interactionMode",
   "displaySettings",
   "expressionControl",
+  "motionControl",
 ];
 
 export const WINDOW_LABELS: Record<WindowId, string> = {
@@ -46,6 +48,7 @@ export const WINDOW_LABELS: Record<WindowId, string> = {
   interactionMode: "操作モード",
   displaySettings: "表示調整",
   expressionControl: "表情コントロール",
+  motionControl: "モーションコントロール",
 };
 
 interface WindowState {
@@ -75,6 +78,7 @@ const DEFAULT_POSITIONS: Record<WindowId, { x: number; y: number }> = {
   interactionMode: { x: 340, y: 500 },
   displaySettings: { x: 660, y: 16 },
   expressionControl: { x: 660, y: 500 },
+  motionControl: { x: 980, y: 16 },
 };
 
 const DEFAULT_VISIBLE: Record<WindowId, boolean> = {
@@ -88,6 +92,7 @@ const DEFAULT_VISIBLE: Record<WindowId, boolean> = {
   interactionMode: false,
   displaySettings: false,
   expressionControl: false,
+  motionControl: false,
 };
 
 function buildDefaultStates(config: FloatingWindowLayerConfig): Record<WindowId, WindowState> {

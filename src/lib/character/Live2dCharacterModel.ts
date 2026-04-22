@@ -17,12 +17,45 @@ import type {
   CharacterModel,
   ExpressionController,
   ExpressionInfo,
+  MotionCapability,
+  MotionHandle,
+  MotionInfo,
+  MotionLayer,
+  MotionLibrary,
   PhysicsController,
+  PlayOptions,
   PresetExpressionController,
   SemanticExpressionKey,
 } from "./types";
-import { SEMANTIC_EXPRESSION_KEYS } from "./types";
+import { MotionHandleDisposedError, SEMANTIC_EXPRESSION_KEYS } from "./types";
+import { AnimationEventEmitter } from "./animationEvents";
+import { MutableMotionMapping } from "./MotionMapping";
 import { revokeFileMapUrls } from "./urlModifier";
+
+interface Live2dMotionRef {
+  group: string;
+  index: number;
+}
+
+interface Live2dMotionEntry {
+  handle: MotionHandle;
+  info: MotionInfo;
+  ref: Live2dMotionRef;
+  embedded: boolean;
+  disposed: boolean;
+}
+
+const LIVE2D_CAPABILITY: MotionCapability = {
+  layers: ["base", "overlay"],
+  crossfade: true,
+  seek: false,
+  externalLoad: false,
+  embeddedLibrary: true,
+};
+
+const DEFAULT_FADE_SEC = 0.2;
+const PRIORITY_NORMAL = 2;
+const PRIORITY_FORCE = 3;
 // CubismInstance / loadModelSetting は Cubism Framework 経由で
 // top-level に Live2DCubismCore を参照する enum を間接的に持ち込むため、
 // Next.js の SSR/プリレンダリングでエラーになる。型のみ静的に import し、
@@ -101,6 +134,7 @@ export class Live2dCharacterModel implements CharacterModel {
   readonly presetExpressions: PresetExpressionController;
   readonly bones: BoneController;
   readonly animation: AnimationController;
+  readonly motionMapping: MutableMotionMapping;
   readonly physics: PhysicsController;
 
   private instance: CubismInstance;
@@ -136,6 +170,13 @@ export class Live2dCharacterModel implements CharacterModel {
   private paused = false;
   private disposed = false;
   private needsSharedRender = true;
+
+  private motionEntries = new Map<string, Live2dMotionEntry>();
+  private layerStates: Record<MotionLayer, Live2dMotionEntry | null> = {
+    base: null,
+    overlay: null,
+  };
+  private animationEvents = new AnimationEventEmitter();
 
   constructor(opts: Live2dConstructorOptions) {
     this.id = opts.id;
@@ -206,7 +247,24 @@ export class Live2dCharacterModel implements CharacterModel {
     this.presetExpressions = this.createPresetExpressionController();
     this.bones = { list: () => [], find: () => null };
     this.animation = this.createAnimationController();
+    this.motionMapping = new MutableMotionMapping();
+    this.motionMapping.subscribe(() => {
+      this.applyIdleMotion();
+    });
     this.physics = this.createPhysicsController();
+  }
+
+  private applyIdleMotion(): void {
+    const id = this.motionMapping.idle;
+    if (!id) {
+      this.animation.stopLayer("base");
+      return;
+    }
+    const handle = this.animation.library
+      .list()
+      .find((h) => h.id === id);
+    if (!handle) return;
+    void this.animation.play(handle, "base", { loop: true });
   }
 
   static async load(opts: {
@@ -359,6 +417,11 @@ export class Live2dCharacterModel implements CharacterModel {
 
     this.planeMesh.geometry.dispose();
     this.planeMaterial.dispose();
+
+    this.motionEntries.clear();
+    this.layerStates.base = null;
+    this.layerStates.overlay = null;
+    this.animationEvents.clear();
 
     if (this.fileMap) {
       revokeFileMapUrls(this.fileMap);
@@ -585,21 +648,192 @@ export class Live2dCharacterModel implements CharacterModel {
   // Animation
   // ──────────────────────────────────────────────
 
+  private buildMotionInfo(
+    handle: MotionHandle,
+    ref: Live2dMotionRef,
+    embedded: boolean,
+    name: string
+  ): MotionInfo {
+    const duration = this.instance.getMotionDuration(ref.group, ref.index);
+    return {
+      id: handle.id,
+      name,
+      // Cubism は loop 中を duration=-1 で示す。未ロードなら null
+      durationSec:
+        duration === null || duration < 0 ? null : duration,
+      loopable: true,
+      source: "motion3",
+      embedded,
+    };
+  }
+
+  private buildEmbeddedEntry(
+    group: string,
+    index: number
+  ): Live2dMotionEntry {
+    const id = `motion3:embedded:${group}:${index}`;
+    const handle: MotionHandle = { id, source: "motion3" };
+    const ref: Live2dMotionRef = { group, index };
+    const name = `${group}[${index}]`;
+    return {
+      handle,
+      info: this.buildMotionInfo(handle, ref, true, name),
+      ref,
+      embedded: true,
+      disposed: false,
+    };
+  }
+
+  private ensureEmbeddedEntry(
+    group: string,
+    index: number
+  ): Live2dMotionEntry {
+    const id = `motion3:embedded:${group}:${index}`;
+    const cached = this.motionEntries.get(id);
+    if (cached && !cached.disposed) return cached;
+    const entry = this.buildEmbeddedEntry(group, index);
+    this.motionEntries.set(id, entry);
+    return entry;
+  }
+
+  private createMotionLibrary(): MotionLibrary {
+    return {
+      load: async () => {
+        // Live2D は model3.json 同梱モーションのみをサポートする (初版)。
+        // 外部 motion3.json を CubismInstance に動的登録する仕組みは
+        // 将来実装予定。呼び出し側は listEmbedded() を使うこと。
+        throw new Error(
+          "Live2D の外部モーション load は未対応です。library.listEmbedded() を使用してください"
+        );
+      },
+      listEmbedded: () => {
+        const out: MotionHandle[] = [];
+        for (const group of this.instance.listMotionGroups()) {
+          for (let i = 0; i < group.motionCount; i++) {
+            const entry = this.ensureEmbeddedEntry(group.groupName, i);
+            out.push(entry.handle);
+          }
+        }
+        return out;
+      },
+      list: () => {
+        // Live2D は埋め込み = 全 (外部 load 未対応)
+        const out: MotionHandle[] = [];
+        for (const group of this.instance.listMotionGroups()) {
+          for (let i = 0; i < group.motionCount; i++) {
+            const entry = this.ensureEmbeddedEntry(group.groupName, i);
+            out.push(entry.handle);
+          }
+        }
+        return out;
+      },
+      getInfo: (handle) => {
+        const entry = this.motionEntries.get(handle.id);
+        if (!entry || entry.disposed) {
+          throw new MotionHandleDisposedError(handle.id);
+        }
+        return entry.info;
+      },
+      dispose: (handle) => {
+        const entry = this.motionEntries.get(handle.id);
+        if (!entry || entry.disposed) return;
+        entry.disposed = true;
+        for (const layer of ["base", "overlay"] as const) {
+          if (this.layerStates[layer] === entry) {
+            this.layerStates[layer] = null;
+          }
+        }
+        this.motionEntries.delete(handle.id);
+      },
+    };
+  }
+
+  private playEntry(
+    entry: Live2dMotionEntry,
+    layer: MotionLayer,
+    opts: PlayOptions | undefined
+  ): void {
+    const loop = opts?.loop ?? layer === "base";
+    const fadeInSec = opts?.fadeInSec ?? DEFAULT_FADE_SEC;
+    const fadeOutSec = opts?.fadeOutSec ?? DEFAULT_FADE_SEC;
+    const priority = layer === "overlay" ? PRIORITY_FORCE : PRIORITY_NORMAL;
+
+    // Cubism のモーションマネージャは 1 スロット。overlay は Force priority で
+    // 割り込ませ、終了時に base を remember しておけば復帰できる。
+    const rememberedBase =
+      layer === "overlay" ? this.layerStates.base : null;
+
+    const ok = this.instance.startMotion(entry.ref.group, entry.ref.index, {
+      priority,
+      loop,
+      fadeInSec,
+      fadeOutSec,
+      onFinished: () => {
+        // この handler は motion が finish したタイミングで呼ばれる。
+        // loop=true の場合、Cubism は内部で finish を発火しないので onEnd は
+        // 実質ワンショット向け通知となる。
+        const current = this.layerStates[layer];
+        if (current !== entry) return;
+        this.animationEvents.emit({
+          type: "end",
+          layer,
+          handle: entry.handle,
+        });
+        this.layerStates[layer] = null;
+
+        // overlay が終わったら base を自動復帰
+        if (layer === "overlay" && rememberedBase && !rememberedBase.disposed) {
+          this.playEntry(rememberedBase, "base", {
+            loop: true,
+            fadeInSec,
+          });
+        }
+      },
+    });
+    if (!ok) {
+      console.warn(
+        `[Live2D] startMotion 失敗: ${entry.ref.group}[${entry.ref.index}]`
+      );
+      return;
+    }
+
+    this.layerStates[layer] = entry;
+    if (layer === "base") {
+      this.hasStartedMotion = true;
+    }
+    this.needsSharedRender = true;
+    this.animationEvents.emit({
+      type: "start",
+      layer,
+      handle: entry.handle,
+    });
+  }
+
+  private pickDefaultBaseEntry(): Live2dMotionEntry | null {
+    const groups = this.instance.listMotionGroups();
+    if (groups.length === 0) return null;
+    const idleGroup =
+      groups.find((g) => /idle/i.test(g.groupName)) ?? groups[0];
+    if (idleGroup.motionCount === 0) return null;
+    return this.ensureEmbeddedEntry(idleGroup.groupName, 0);
+  }
+
   private createAnimationController(): AnimationController {
+    const library = this.createMotionLibrary();
     return {
       getCurrentClip: () => null,
       isLoaded: () => this.hasStartedMotion,
       loadAndPlay: async (urls) => {
-        const groups = this.instance.listMotionGroups();
-        if (groups.length === 0) return;
-        const idleGroup =
-          groups.find((g) => /idle/i.test(g.groupName)) ?? groups[0];
-        const ok = this.instance.startMotion(idleGroup.groupName, 0);
-        if (ok) this.hasStartedMotion = true;
-        void urls; // 追加 urls のハンドリングは将来対応
+        // 既存挙動維持: URL は無視し、idle 埋め込みモーションを base で再生
+        void urls;
+        const entry = this.pickDefaultBaseEntry();
+        if (!entry) return;
+        this.playEntry(entry, "base", { loop: true, fadeInSec: 0 });
       },
       stop: () => {
         this.instance.stopMotions();
+        this.layerStates.base = null;
+        this.layerStates.overlay = null;
         this.hasStartedMotion = false;
       },
       setPaused: (paused) => {
@@ -608,6 +842,44 @@ export class Live2dCharacterModel implements CharacterModel {
       setTime: () => {
         // Live2D のモーション再生位置 seek は本ライブラリの安定公開 API が無いので no-op
       },
+
+      library,
+      capabilities: LIVE2D_CAPABILITY,
+      play: async (handle, layer, opts) => {
+        const entry = this.motionEntries.get(handle.id);
+        if (!entry || entry.disposed) {
+          throw new MotionHandleDisposedError(handle.id);
+        }
+        this.playEntry(entry, layer, opts);
+      },
+      stopLayer: (layer) => {
+        const state = this.layerStates[layer];
+        if (!state) return;
+        // Cubism はレイヤー別停止を持たないため、overlay 停止時は
+        // stopAllMotions → base を再開、base 停止時は全停止する。
+        if (layer === "overlay") {
+          this.instance.stopMotions();
+          this.layerStates.overlay = null;
+          const base = this.layerStates.base;
+          if (base && !base.disposed) {
+            this.playEntry(base, "base", { loop: true });
+          }
+        } else {
+          this.instance.stopMotions();
+          this.layerStates.base = null;
+          this.layerStates.overlay = null;
+          this.hasStartedMotion = false;
+        }
+      },
+      setLayerSpeed: (layer, timeScale) => {
+        // Cubism は個別モーションの時間スケールを外部から変更する安定 API を
+        // 持たないため現状は no-op。将来 updateModel の dt スケールで
+        // レイヤー別対応を検討。
+        void layer;
+        void timeScale;
+      },
+      getActive: (layer) => this.layerStates[layer]?.info ?? null,
+      on: (event, cb) => this.animationEvents.on(event, cb),
     };
   }
 

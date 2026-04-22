@@ -91,14 +91,116 @@ export interface BoneController {
   find(name: string): BoneRef | null;
 }
 
+export type MotionLayer = "base" | "overlay";
+export type MotionSource = "vmd" | "vrma" | "motion3";
+
+export interface MotionHandle {
+  readonly id: string;
+  readonly source: MotionSource;
+}
+
+export interface MotionInfo {
+  id: string;
+  name: string;
+  /** バックエンドが長さを報告できないとき null (Live2D のループモーション等) */
+  durationSec: number | null;
+  loopable: boolean;
+  source: MotionSource;
+  /** Live2D の model3.json 同梱モーションなら true */
+  embedded: boolean;
+}
+
+export interface LoadOptions {
+  name?: string;
+}
+
+export interface PlayOptions {
+  /** base のデフォルト: true / overlay のデフォルト: false */
+  loop?: boolean;
+  /** 再生速度 (デフォルト 1.0) */
+  speed?: number;
+  /** フェードイン秒 (デフォルト 0.2) */
+  fadeInSec?: number;
+  /** フェードアウト秒 (このレイヤー停止/置換時に適用、デフォルト 0.2) */
+  fadeOutSec?: number;
+  /** overlay のブレンドウェイト (デフォルト 1.0) */
+  weight?: number;
+}
+
+export type AnimationEvent =
+  | { type: "start"; layer: MotionLayer; handle: MotionHandle }
+  | { type: "end"; layer: MotionLayer; handle: MotionHandle }
+  | { type: "loop"; layer: MotionLayer; handle: MotionHandle };
+
+export type AnimationEventType = AnimationEvent["type"];
+
+export interface MotionCapability {
+  readonly layers: readonly MotionLayer[];
+  readonly crossfade: boolean;
+  readonly seek: boolean;
+  readonly externalLoad: boolean;
+  readonly embeddedLibrary: boolean;
+}
+
+export class MotionHandleDisposedError extends Error {
+  constructor(handleId: string) {
+    super(`motion handle "${handleId}" has been disposed`);
+    this.name = "MotionHandleDisposedError";
+  }
+}
+
+export interface MotionLibrary {
+  load(
+    urls: string[],
+    fileMap: FileMap | null,
+    opts?: LoadOptions
+  ): Promise<MotionHandle>;
+  /** 利用可能な全ハンドル (埋め込み + ロード済み外部) */
+  list(): readonly MotionHandle[];
+  /** model3.json 同梱モーション等。VRM/MMD では空配列 */
+  listEmbedded(): readonly MotionHandle[];
+  getInfo(handle: MotionHandle): MotionInfo;
+  dispose(handle: MotionHandle): void;
+}
+
+export type MotionMappingKey = "idle";
+
+export interface MotionMappingSnapshot {
+  idle: string | null;
+}
+
+/** モーションの用途 (idle 等) と handle.id の対応。購読可能 */
+export interface MotionMapping {
+  idle: string | null;
+  subscribe(listener: () => void): () => void;
+  set(key: MotionMappingKey, handleId: string | null): void;
+  toJSON(): MotionMappingSnapshot;
+}
+
 export interface AnimationController {
+  // ── 既存 API (後方互換) ──
   getCurrentClip(): THREE.AnimationClip | null;
   isLoaded(): boolean;
-
   loadAndPlay(urls: string[], fileMap: FileMap | null): Promise<void>;
   stop(): void;
   setPaused(paused: boolean): void;
   setTime(seconds: number): void;
+
+  // ── 新 API ──
+  readonly library: MotionLibrary;
+  readonly capabilities: MotionCapability;
+  play(
+    handle: MotionHandle,
+    layer: MotionLayer,
+    opts?: PlayOptions
+  ): Promise<void>;
+  stopLayer(layer: MotionLayer, fadeOutSec?: number): void;
+  setLayerSpeed(layer: MotionLayer, timeScale: number): void;
+  getActive(layer: MotionLayer): MotionInfo | null;
+  on(
+    event: AnimationEventType,
+    cb: (e: AnimationEvent) => void
+  ): () => void;
 }
 
 export type PhysicsCapability = "full" | "spring-bone";
@@ -130,6 +232,7 @@ export interface CharacterModel {
   readonly presetExpressions?: PresetExpressionController;
   readonly bones: BoneController;
   readonly animation: AnimationController;
+  readonly motionMapping: MotionMapping;
   readonly physics: PhysicsController;
 
   /** Live2D のみ: ベースの offscreen canvas 解像度スケール */

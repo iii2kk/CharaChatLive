@@ -12,7 +12,7 @@ import type { ViewerSettings } from "@/lib/viewer-settings";
 
 interface LoadModelOptions {
   name?: string;
-  onLoaded?: (modelId: string) => void;
+  onLoaded?: (modelId: string, modelKind: ModelKind) => void;
 }
 
 function getErrorMessage(error: unknown): string {
@@ -23,6 +23,16 @@ function getNameFromPath(path: string): string {
   const normalized = path.replace(/\\/g, "/");
   const parts = normalized.split("/");
   return parts[parts.length - 1] || path;
+}
+
+function deriveMotionName(url: string): string {
+  try {
+    const path = new URL(url, "http://local/").pathname;
+    const base = path.split("/").pop() ?? "motion";
+    return decodeURIComponent(base);
+  } catch {
+    return url;
+  }
 }
 
 function generateModelId() {
@@ -115,7 +125,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
           syncModels((prev) => [...prev, model]);
           setActiveModelId(modelId);
           setLoading(false);
-          options?.onLoaded?.(modelId);
+          options?.onLoaded?.(modelId, model.kind);
         })
         .catch((err) => {
           console.error("model load error:", err);
@@ -168,7 +178,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
           syncModels((prev) => [...prev, model]);
           setActiveModelId(modelId);
           setLoading(false);
-          options?.onLoaded?.(modelId);
+          options?.onLoaded?.(modelId, model.kind);
         })
         .catch((err) => {
           console.error("model load error:", err);
@@ -209,10 +219,37 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
       setLoading(true);
       setError(null);
 
-      targetModel.animation
-        .loadAndPlay(animationUrls, null)
+      const run = async () => {
+        if (!targetModel.animation.capabilities.externalLoad) {
+          // Live2D 等: 外部ロード非対応は従来の loadAndPlay に委譲
+          await targetModel.animation.loadAndPlay(animationUrls, null);
+          return;
+        }
+
+        // MMD/VRM: 各 URL を個別ハンドルとして登録し、最初の 1 つを再生
+        const loaded = [];
+        for (const url of animationUrls) {
+          try {
+            const handle = await targetModel.animation.library.load(
+              [url],
+              null,
+              { name: deriveMotionName(url) }
+            );
+            loaded.push(handle);
+          } catch (err) {
+            console.error(`animation load failed: ${url}`, err);
+          }
+        }
+        if (loaded.length === 0) {
+          throw new Error("すべてのモーション読み込みに失敗しました");
+        }
+        // 既存挙動維持: 最初のモーションを base で再生
+        await targetModel.animation.play(loaded[0], "base", { loop: true });
+      };
+
+      run()
         .then(() => {
-          // animation.isLoaded 等が変わったので再描画させる
+          // animation.isLoaded / library の変化を UI に反映
           syncModels((prev) => [...prev]);
           setLoading(false);
         })
@@ -225,6 +262,42 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         });
     },
     [activeModelId, getModelById, syncModels]
+  );
+
+  const registerPresetMotions = useCallback(
+    (
+      modelId: string,
+      items: Array<{ url: string; name: string }>
+    ): Promise<void> => {
+      const targetModel = getModelById(modelId);
+      if (!targetModel) return Promise.resolve();
+      if (!targetModel.animation.capabilities.externalLoad) {
+        return Promise.resolve();
+      }
+      if (items.length === 0) return Promise.resolve();
+
+      return Promise.all(
+        items.map((item) =>
+          targetModel.animation.library
+            .load([item.url], null, { name: item.name })
+            .then(() => item)
+            .catch((err) => {
+              console.error(
+                `[presetMotions] FAIL: ${item.name} (${item.url})`,
+                err
+              );
+              return null;
+            })
+        )
+      ).then((results) => {
+        const ok = results.filter((r) => r !== null).length;
+        console.log(
+          `[presetMotions] 完了: ${ok}/${items.length} 成功`
+        );
+        syncModels((prev) => [...prev]);
+      });
+    },
+    [getModelById, syncModels]
   );
 
   const setModelRenderScale = useCallback(
@@ -309,6 +382,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
     loadModel,
     loadModelFromPath,
     loadAnimation,
+    registerPresetMotions,
     setModelRenderScale,
     setModelDisplayScale,
   };

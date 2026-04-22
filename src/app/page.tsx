@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import FloatingWindowOverlay from "@/components/FloatingWindowOverlay";
 import type { ModelEntry, ModelFile } from "@/types/models";
+import type { PresetMotion } from "@/types/motions";
 import type { TexturePresets } from "@/types/textures";
 import { useModelLoader } from "@/hooks/useModelLoader";
 import type { InteractionMode } from "@/lib/interaction-mode";
@@ -54,11 +55,13 @@ export default function Home() {
     loadModel,
     loadModelFromPath,
     loadAnimation,
+    registerPresetMotions,
     setModelRenderScale,
     setModelDisplayScale,
   } = useModelLoader(viewerSettings);
   const [animationUrlState, setAnimationUrlState] = useState<string[]>([]);
   const [presetModels, setPresetModels] = useState<ModelEntry[]>([]);
+  const [presetMotions, setPresetMotions] = useState<PresetMotion[]>([]);
   const [texturePresets, setTexturePresets] = useState<TexturePresets>({
     ground: [],
     background: [],
@@ -80,7 +83,36 @@ export default function Home() {
       .then((res) => res.json())
       .then((data: TexturePresets) => setTexturePresets(data))
       .catch(() => {});
+    fetch("/api/motions")
+      .then((res) => res.json())
+      .then((data: PresetMotion[]) => setPresetMotions(data))
+      .catch(() => {});
   }, []);
+
+  const presetMotionsByKindRef = useCallback(
+    (modelKind: "mmd" | "vrm" | "live2d"): PresetMotion[] => {
+      const kind: AnimationKind | null =
+        modelKind === "mmd"
+          ? "vmd"
+          : modelKind === "vrm"
+          ? "vrma"
+          : null;
+      if (!kind) return [];
+      return presetMotions.filter((m) => m.kind === kind);
+    },
+    [presetMotions]
+  );
+
+  const attachPresetMotions = useCallback(
+    (modelId: string, modelKind: "mmd" | "vrm" | "live2d") => {
+      const items = presetMotionsByKindRef(modelKind).map((m) => ({
+        url: m.path,
+        name: m.name,
+      }));
+      void registerPresetMotions(modelId, items);
+    },
+    [presetMotionsByKindRef, registerPresetMotions]
+  );
 
   useEffect(() => {
     return () => {
@@ -108,9 +140,14 @@ export default function Home() {
   const handlePresetSelected = useCallback(
     (file: ModelFile) => {
       clearAnimationUrls();
-      loadModelFromPath(file.path, { name: file.name });
+      loadModelFromPath(file.path, {
+        name: file.name,
+        onLoaded: (modelId, modelKind) => {
+          attachPresetMotions(modelId, modelKind);
+        },
+      });
     },
-    [clearAnimationUrls, loadModelFromPath]
+    [attachPresetMotions, clearAnimationUrls, loadModelFromPath]
   );
 
   const handleModelFolderSelected = useCallback(
@@ -140,14 +177,15 @@ export default function Home() {
 
       loadModel(modelEntry.kind, modelEntry.url, fileMap, {
         name: modelEntry.name,
-        onLoaded: (modelId) => {
-        if (animationUrls.length > 0) {
-          loadAnimation(animationKind, animationUrls, modelId);
-        }
+        onLoaded: (modelId, modelKind) => {
+          attachPresetMotions(modelId, modelKind);
+          if (animationUrls.length > 0) {
+            loadAnimation(animationKind, animationUrls, modelId);
+          }
         },
       });
     },
-    [clearAnimationUrls, loadAnimation, loadModel]
+    [attachPresetMotions, clearAnimationUrls, loadAnimation, loadModel]
   );
 
   const handleAnimationFilesSelected = useCallback(

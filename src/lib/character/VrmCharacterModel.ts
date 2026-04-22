@@ -24,9 +24,50 @@ import type {
   ExpressionCategory,
   ExpressionController,
   ExpressionInfo,
+  MotionCapability,
+  MotionHandle,
+  MotionInfo,
+  MotionLayer,
+  MotionLibrary,
   PhysicsController,
+  PlayOptions,
 } from "./types";
+import { MotionHandleDisposedError } from "./types";
+import { AnimationEventEmitter } from "./animationEvents";
+import { MutableMotionMapping } from "./MotionMapping";
 import { buildLoadingManager, revokeFileMapUrls } from "./urlModifier";
+
+function deriveVrmaName(url: string): string {
+  try {
+    const path = new URL(url, "http://local/").pathname;
+    const base = path.split("/").pop() ?? "vrma-motion";
+    return decodeURIComponent(base);
+  } catch {
+    return url;
+  }
+}
+
+interface VrmMotionEntry {
+  handle: MotionHandle;
+  info: MotionInfo;
+  clip: THREE.AnimationClip;
+  disposed: boolean;
+}
+
+interface VrmLayerState {
+  entry: VrmMotionEntry;
+  action: THREE.AnimationAction;
+}
+
+const VRM_CAPABILITY: MotionCapability = {
+  layers: ["base", "overlay"],
+  crossfade: true,
+  seek: true,
+  externalLoad: true,
+  embeddedLibrary: false,
+};
+
+const DEFAULT_FADE_SEC = 0.2;
 
 interface VRMGLTF extends GLTF {
   userData: GLTF["userData"] & {
@@ -83,6 +124,7 @@ export class VrmCharacterModel implements CharacterModel {
   readonly expressionMapping: MutableExpressionMapping;
   readonly bones: BoneController;
   readonly animation: AnimationController;
+  readonly motionMapping: MutableMotionMapping;
   readonly physics: PhysicsController;
 
   private vrm: VRM;
@@ -90,6 +132,15 @@ export class VrmCharacterModel implements CharacterModel {
   private animationMixer: THREE.AnimationMixer | null = null;
   private animationClip: THREE.AnimationClip | null = null;
   private physicsEnabled = true;
+
+  private motionEntries = new Map<string, VrmMotionEntry>();
+  private motionCounter = 0;
+  private layerStates: Record<MotionLayer, VrmLayerState | null> = {
+    base: null,
+    overlay: null,
+  };
+  private events = new AnimationEventEmitter();
+  private mixerListenersBound = false;
 
   constructor(opts: VrmConstructorOptions) {
     this.id = opts.id;
@@ -104,7 +155,24 @@ export class VrmCharacterModel implements CharacterModel {
     );
     this.bones = this.createBoneController();
     this.animation = this.createAnimationController();
+    this.motionMapping = new MutableMotionMapping();
+    this.motionMapping.subscribe(() => {
+      this.applyIdleMotion();
+    });
     this.physics = this.createPhysicsController();
+  }
+
+  private applyIdleMotion(): void {
+    const id = this.motionMapping.idle;
+    if (!id) {
+      this.animation.stopLayer("base");
+      return;
+    }
+    const handle = this.animation.library
+      .list()
+      .find((h) => h.id === id);
+    if (!handle) return;
+    void this.animation.play(handle, "base", { loop: true });
   }
 
   static load(opts: {
@@ -190,6 +258,11 @@ export class VrmCharacterModel implements CharacterModel {
       this.animationMixer = null;
     }
     this.animationClip = null;
+    this.layerStates.base = null;
+    this.layerStates.overlay = null;
+    this.motionEntries.clear();
+    this.events.clear();
+    this.mixerListenersBound = false;
     VRMUtils.deepDispose(this.vrm.scene);
 
     if (this.fileMap) {
@@ -259,13 +332,76 @@ export class VrmCharacterModel implements CharacterModel {
     };
   }
 
-  private createAnimationController(): AnimationController {
+  private ensureMixer(): THREE.AnimationMixer {
+    if (this.animationMixer) return this.animationMixer;
+    const mixer = new THREE.AnimationMixer(this.vrm.scene);
+    this.animationMixer = mixer;
+    this.bindMixerListeners(mixer);
+    return mixer;
+  }
+
+  private bindMixerListeners(mixer: THREE.AnimationMixer): void {
+    if (this.mixerListenersBound) return;
+    mixer.addEventListener("finished", (e) => {
+      const event = e as unknown as { action: THREE.AnimationAction };
+      const layer = this.findLayerByAction(event.action);
+      if (!layer) return;
+      const state = this.layerStates[layer];
+      if (!state) return;
+      this.events.emit({
+        type: "end",
+        layer,
+        handle: state.entry.handle,
+      });
+      // ワンショット (!loop) が終わったらスロットを掃除する
+      if (state.action === event.action && !event.action.isRunning()) {
+        this.layerStates[layer] = null;
+      }
+    });
+    mixer.addEventListener("loop", (e) => {
+      const event = e as unknown as { action: THREE.AnimationAction };
+      const layer = this.findLayerByAction(event.action);
+      if (!layer) return;
+      const state = this.layerStates[layer];
+      if (!state) return;
+      this.events.emit({
+        type: "loop",
+        layer,
+        handle: state.entry.handle,
+      });
+    });
+    this.mixerListenersBound = true;
+  }
+
+  private findLayerByAction(
+    action: THREE.AnimationAction
+  ): MotionLayer | null {
+    if (this.layerStates.base?.action === action) return "base";
+    if (this.layerStates.overlay?.action === action) return "overlay";
+    return null;
+  }
+
+  private buildMotionInfo(
+    handle: MotionHandle,
+    clip: THREE.AnimationClip,
+    name: string
+  ): MotionInfo {
     return {
-      getCurrentClip: () => this.animationClip,
-      isLoaded: () => this.animationClip !== null,
-      loadAndPlay: async (urls, fileMap) => {
+      id: handle.id,
+      name,
+      durationSec: clip.duration,
+      loopable: true,
+      source: "vrma",
+      embedded: false,
+    };
+  }
+
+  private createMotionLibrary(): MotionLibrary {
+    const mkId = () => `vrma:${++this.motionCounter}`;
+    return {
+      load: async (urls, fileMap, opts) => {
         const url = urls[0];
-        if (!url) return;
+        if (!url) throw new Error("VRM library.load: urls が空です");
 
         const manager = buildLoadingManager(fileMap ?? this.fileMap);
         const loader = createVRMAnimationLoader(manager);
@@ -283,26 +419,137 @@ export class VrmCharacterModel implements CharacterModel {
         if (!vrmAnimation) {
           throw new Error("VRMA データを取得できませんでした");
         }
-
         const clip = createVRMAnimationClip(vrmAnimation, this.vrm);
-
-        if (this.animationMixer) {
-          this.animationMixer.stopAllAction();
-          this.animationMixer.uncacheRoot(this.vrm.scene);
+        const handle: MotionHandle = { id: mkId(), source: "vrma" };
+        const name = opts?.name ?? clip.name ?? "vrma-motion";
+        const entry: VrmMotionEntry = {
+          handle,
+          info: this.buildMotionInfo(handle, clip, name),
+          clip,
+          disposed: false,
+        };
+        this.motionEntries.set(handle.id, entry);
+        return handle;
+      },
+      list: () =>
+        Array.from(this.motionEntries.values())
+          .filter((e) => !e.disposed)
+          .map((e) => e.handle),
+      listEmbedded: () => [],
+      getInfo: (handle) => {
+        const entry = this.motionEntries.get(handle.id);
+        if (!entry || entry.disposed) {
+          throw new MotionHandleDisposedError(handle.id);
         }
-        const mixer = new THREE.AnimationMixer(this.vrm.scene);
-        const action = mixer.clipAction(clip);
-        action.reset();
-        action.play();
+        return entry.info;
+      },
+      dispose: (handle) => {
+        const entry = this.motionEntries.get(handle.id);
+        if (!entry || entry.disposed) return;
+        entry.disposed = true;
+        for (const layer of ["base", "overlay"] as const) {
+          if (this.layerStates[layer]?.entry === entry) {
+            this.stopLayerInternal(layer, 0);
+          }
+        }
+        if (this.animationMixer) {
+          this.animationMixer.uncacheClip(entry.clip);
+        }
+        this.motionEntries.delete(handle.id);
+      },
+    };
+  }
 
-        this.animationMixer = mixer;
-        this.animationClip = clip;
+  private stopLayerInternal(layer: MotionLayer, fadeOutSec: number): void {
+    const state = this.layerStates[layer];
+    if (!state) return;
+    if (fadeOutSec > 0) {
+      state.action.fadeOut(fadeOutSec);
+    } else {
+      state.action.stop();
+    }
+    this.layerStates[layer] = null;
+  }
+
+  private async playLayer(
+    entry: VrmMotionEntry,
+    layer: MotionLayer,
+    opts: PlayOptions | undefined
+  ): Promise<void> {
+    const mixer = this.ensureMixer();
+    const loop = opts?.loop ?? layer === "base";
+    const speed = opts?.speed ?? 1;
+    const fadeInSec = opts?.fadeInSec ?? DEFAULT_FADE_SEC;
+    const weight = opts?.weight ?? 1;
+
+    // レイヤー毎に独立したアクションが必要なので毎回 clip を clone する。
+    // (mixer.clipAction は (clip.uuid, root.uuid) で action をキャッシュするため、
+    //  同じ clip を 2 回呼ぶと同じ action が返ってきてレイヤー衝突する)
+    const clipInstance = entry.clip.clone();
+    const newAction = mixer.clipAction(clipInstance);
+    newAction.enabled = true;
+    newAction.setLoop(
+      loop ? THREE.LoopRepeat : THREE.LoopOnce,
+      loop ? Infinity : 1
+    );
+    newAction.clampWhenFinished = !loop;
+    newAction.timeScale = speed;
+    newAction.weight = weight;
+    newAction.reset();
+
+    const existing = this.layerStates[layer];
+    if (existing) {
+      if (fadeInSec > 0) {
+        existing.action.crossFadeTo(newAction, fadeInSec, false);
+        newAction.play();
+      } else {
+        existing.action.stop();
+        mixer.uncacheClip(existing.action.getClip());
+        newAction.play();
+      }
+    } else {
+      if (fadeInSec > 0) {
+        newAction.fadeIn(fadeInSec);
+      }
+      newAction.play();
+    }
+
+    this.layerStates[layer] = { entry, action: newAction };
+    if (layer === "base") {
+      this.animationClip = entry.clip;
+    }
+    this.events.emit({ type: "start", layer, handle: entry.handle });
+  }
+
+  private createAnimationController(): AnimationController {
+    const library = this.createMotionLibrary();
+    return {
+      getCurrentClip: () => this.animationClip,
+      isLoaded: () => this.animationClip !== null,
+      loadAndPlay: async (urls, fileMap) => {
+        const url = urls[0];
+        if (!url) return;
+        const handle = await library.load([url], fileMap, {
+          name: deriveVrmaName(url),
+        });
+        const entry = this.motionEntries.get(handle.id);
+        if (!entry) return;
+        // 既存呼び出し側の挙動を維持: base レイヤーをフェードなしで再生
+        this.stopLayerInternal("overlay", 0);
+        this.stopLayerInternal("base", 0);
+        await this.playLayer(entry, "base", {
+          loop: true,
+          fadeInSec: 0,
+        });
       },
       stop: () => {
+        this.stopLayerInternal("overlay", 0);
+        this.stopLayerInternal("base", 0);
         if (this.animationMixer) {
           this.animationMixer.stopAllAction();
           this.animationMixer.uncacheRoot(this.vrm.scene);
           this.animationMixer = null;
+          this.mixerListenersBound = false;
         }
         this.animationClip = null;
       },
@@ -314,6 +561,30 @@ export class VrmCharacterModel implements CharacterModel {
         if (!this.animationMixer) return;
         this.animationMixer.setTime(seconds);
       },
+
+      library,
+      capabilities: VRM_CAPABILITY,
+      play: async (handle, layer, opts) => {
+        const entry = this.motionEntries.get(handle.id);
+        if (!entry || entry.disposed) {
+          throw new MotionHandleDisposedError(handle.id);
+        }
+        await this.playLayer(entry, layer, opts);
+      },
+      stopLayer: (layer, fadeOutSec) => {
+        this.stopLayerInternal(layer, fadeOutSec ?? DEFAULT_FADE_SEC);
+        if (layer === "base") {
+          this.animationClip =
+            this.layerStates.base?.entry.clip ?? null;
+        }
+      },
+      setLayerSpeed: (layer, timeScale) => {
+        const state = this.layerStates[layer];
+        if (!state) return;
+        state.action.timeScale = timeScale;
+      },
+      getActive: (layer) => this.layerStates[layer]?.entry.info ?? null,
+      on: (event, cb) => this.events.on(event, cb),
     };
   }
 

@@ -21,11 +21,22 @@ import {
 import { ensureCubismFrameworkReady } from "./cubismRuntime";
 
 const PRIORITY_NORMAL = 2;
+const PRIORITY_FORCE = 3;
 
 export interface MotionDefinitionInfo {
   groupName: string;
   motionCount: number;
 }
+
+export interface StartMotionOptions {
+  priority?: number;
+  loop?: boolean;
+  fadeInSec?: number;
+  fadeOutSec?: number;
+  onFinished?: () => void;
+}
+
+export { PRIORITY_NORMAL, PRIORITY_FORCE };
 
 export interface ExpressionDefinitionInfo {
   name: string;
@@ -211,12 +222,18 @@ export class CubismInstance extends CubismUserModel {
     }
 
     // --- eye blink parameter ids
+    const eyeBlinkIds: CubismIdHandle[] = [];
+    for (let i = 0; i < setting.getEyeBlinkParameterCount(); i++) {
+      eyeBlinkIds.push(setting.getEyeBlinkParameterId(i));
+    }
     if (this._eyeBlink) {
-      const ids: CubismIdHandle[] = [];
-      for (let i = 0; i < setting.getEyeBlinkParameterCount(); i++) {
-        ids.push(setting.getEyeBlinkParameterId(i));
-      }
-      this._eyeBlink.setParameterIds(ids);
+      this._eyeBlink.setParameterIds(eyeBlinkIds);
+    }
+
+    // --- lip sync parameter ids
+    const lipSyncIds: CubismIdHandle[] = [];
+    for (let i = 0; i < setting.getLipSyncParameterCount(); i++) {
+      lipSyncIds.push(setting.getLipSyncParameterId(i));
     }
 
     // --- motions (parse)
@@ -233,6 +250,10 @@ export class CubismInstance extends CubismUserModel {
         job.index
       );
       if (motion) {
+        // CubismMotion は setEffectIds を呼ばないと _eyeBlinkParameterIds /
+        // _lipSyncParameterIds が null のままで、updateMotion 中に .length 参照で
+        // 落ちる。空でも必ず配列を渡す。
+        motion.setEffectIds(eyeBlinkIds, lipSyncIds);
         this._motions.set(job.key, motion);
       }
     });
@@ -389,15 +410,57 @@ export class CubismInstance extends CubismUserModel {
   }
 
   /** 指定グループの index 番のモーションを再生する */
-  public startMotion(groupName: string, index: number, priority = PRIORITY_NORMAL): boolean {
+  public startMotion(
+    groupName: string,
+    index: number,
+    priorityOrOptions: number | StartMotionOptions = PRIORITY_NORMAL
+  ): boolean {
     const motion = this._motions.get(`${groupName}_${index}`);
     if (!motion) return false;
-    const handle = this._motionManager.startMotionPriority(motion, false, priority);
+
+    const options: StartMotionOptions =
+      typeof priorityOrOptions === "number"
+        ? { priority: priorityOrOptions }
+        : priorityOrOptions;
+    const priority = options.priority ?? PRIORITY_NORMAL;
+
+    if (options.loop !== undefined) {
+      motion.setLoop(options.loop);
+    }
+    if (options.fadeInSec !== undefined) {
+      motion.setFadeInTime(options.fadeInSec);
+    }
+    if (options.fadeOutSec !== undefined) {
+      motion.setFadeOutTime(options.fadeOutSec);
+    }
+    if (options.onFinished !== undefined) {
+      const cb = options.onFinished;
+      motion.setFinishedMotionHandler(() => {
+        try {
+          cb();
+        } catch (err) {
+          console.error("[Live2D onFinished error]", err);
+        }
+      });
+    }
+
+    const handle = this._motionManager.startMotionPriority(
+      motion,
+      false,
+      priority
+    );
     return handle !== -1 && handle !== undefined;
   }
 
   public stopMotions(): void {
     this._motionManager.stopAllMotions();
+  }
+
+  /** ループ中のモーションは -1 を返す。未ロードなら null。 */
+  public getMotionDuration(groupName: string, index: number): number | null {
+    const motion = this._motions.get(`${groupName}_${index}`);
+    if (!motion) return null;
+    return motion.getDuration();
   }
 
   public setExpression(name: string): boolean {

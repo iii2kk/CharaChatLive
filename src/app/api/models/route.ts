@@ -27,18 +27,20 @@ function collectModelFiles(
       continue;
     }
 
-    const publicRelativePath = path
+    const publicRelativeSegments = path
       .relative(publicRootDir, fullPath)
-      .split(path.sep)
-      .join("/");
+      .split(path.sep);
     const displayRelativePath = path
       .relative(displayRootDir, fullPath)
       .split(path.sep)
       .join("/");
+    // 日本語・スペース・& 等を含むパスでも fetch が 404 にならないよう
+    // セグメント単位で percent-encode する
+    const urlPath = publicRelativeSegments.map(encodeURIComponent).join("/");
 
     files.push({
       name: displayRelativePath,
-      path: `/models/${publicRelativePath}`,
+      path: `/models/${urlPath}`,
     });
   }
 

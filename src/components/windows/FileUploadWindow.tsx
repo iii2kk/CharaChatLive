@@ -19,12 +19,14 @@ export default function FileUploadWindow({
 }: FileUploadWindowProps) {
   const folderInputRef = useRef<HTMLInputElement>(null);
   const animationInputRef = useRef<HTMLInputElement>(null);
+  const animationFolderInputRef = useRef<HTMLInputElement>(null);
 
   const handleFolderChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files.length > 0) {
         onModelFolderSelected(e.target.files);
       }
+      e.target.value = "";
     },
     [onModelFolderSelected]
   );
@@ -34,6 +36,8 @@ export default function FileUploadWindow({
       if (e.target.files && e.target.files.length > 0) {
         onAnimationFilesSelected(e.target.files);
       }
+      // 同じフォルダを再選択できるよう value をクリア
+      e.target.value = "";
     },
     [onAnimationFilesSelected]
   );
@@ -91,8 +95,7 @@ export default function FileUploadWindow({
 
       {/* Animation Upload */}
       <div
-        className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center cursor-pointer hover:border-green-400 hover:bg-gray-800 transition-colors"
-        onClick={() => animationInputRef.current?.click()}
+        className="border-2 border-dashed border-gray-600 rounded-lg p-4 text-center hover:border-green-400 hover:bg-gray-800 transition-colors"
         onDrop={handleDrop}
         onDragOver={handleDragOver}
       >
@@ -104,9 +107,35 @@ export default function FileUploadWindow({
           multiple
           onChange={handleAnimationChange}
         />
+        <input
+          ref={animationFolderInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleAnimationChange}
+          {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+        />
         <div className="text-3xl mb-2">🎬</div>
-        <p className="text-sm font-medium">アニメーションファイルを選択</p>
-        <p className="text-xs text-gray-400 mt-1">.vmd / .vrma ファイル</p>
+        <p className="text-sm font-medium">アニメーションを追加</p>
+        <p className="text-xs text-gray-400 mt-1">.vmd / .vrma (複数可)</p>
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            onClick={() => animationInputRef.current?.click()}
+            className="flex-1 rounded bg-gray-800 px-2 py-1 text-xs hover:bg-gray-700 transition-colors"
+          >
+            ファイル選択
+          </button>
+          <button
+            type="button"
+            onClick={() => animationFolderInputRef.current?.click()}
+            className="flex-1 rounded bg-gray-800 px-2 py-1 text-xs hover:bg-gray-700 transition-colors"
+          >
+            フォルダ選択
+          </button>
+        </div>
+        <p className="mt-2 text-[10px] text-gray-500">
+          ドラッグ&ドロップも可
+        </p>
       </div>
 
       {/* Status */}
