@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import ScrollArea from "@/components/ScrollArea";
 import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { MotionHandle, MotionInfo } from "@/lib/character/types";
@@ -26,16 +26,13 @@ export default function MotionControlWindow({
     return activeModel.motionMapping.subscribe(forceUpdate);
   }, [activeModel]);
 
-  const entries = useMemo<
-    Array<{ handle: MotionHandle; info: MotionInfo }>
-  >(() => {
-    if (!activeModel) return [];
-    const handles = activeModel.animation.library.list();
-    return handles.map((handle) => ({
-      handle,
-      info: activeModel.animation.library.getInfo(handle),
-    }));
-  }, [activeModel]);
+  const entries: Array<{ handle: MotionHandle; info: MotionInfo }> =
+    activeModel
+      ? activeModel.animation.library.list().map((handle) => ({
+          handle,
+          info: activeModel.animation.library.getInfo(handle),
+        }))
+      : [];
 
   const capabilities = activeModel?.animation.capabilities;
   const activeBase = activeModel?.animation.getActive("base") ?? null;
