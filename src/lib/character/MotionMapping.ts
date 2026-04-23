@@ -6,10 +6,20 @@ import type {
 
 export class MutableMotionMapping implements MotionMapping {
   private _idle: string | null = null;
+  private _walk: string | null = null;
+  private _run: string | null = null;
   private listeners = new Set<() => void>();
 
   get idle(): string | null {
     return this._idle;
+  }
+
+  get walk(): string | null {
+    return this._walk;
+  }
+
+  get run(): string | null {
+    return this._run;
   }
 
   subscribe(listener: () => void): () => void {
@@ -25,6 +35,14 @@ export class MutableMotionMapping implements MotionMapping {
         if (this._idle === handleId) return;
         this._idle = handleId;
         break;
+      case "walk":
+        if (this._walk === handleId) return;
+        this._walk = handleId;
+        break;
+      case "run":
+        if (this._run === handleId) return;
+        this._run = handleId;
+        break;
       default: {
         // 将来の拡張用
         const _exhaustive: never = key;
@@ -36,7 +54,7 @@ export class MutableMotionMapping implements MotionMapping {
   }
 
   toJSON(): MotionMappingSnapshot {
-    return { idle: this._idle };
+    return { idle: this._idle, walk: this._walk, run: this._run };
   }
 
   private notify(): void {

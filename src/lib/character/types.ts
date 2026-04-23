@@ -163,15 +163,19 @@ export interface MotionLibrary {
   dispose(handle: MotionHandle): void;
 }
 
-export type MotionMappingKey = "idle";
+export type MotionMappingKey = "idle" | "walk" | "run";
 
 export interface MotionMappingSnapshot {
   idle: string | null;
+  walk: string | null;
+  run: string | null;
 }
 
 /** モーションの用途 (idle 等) と handle.id の対応。購読可能 */
 export interface MotionMapping {
   idle: string | null;
+  walk: string | null;
+  run: string | null;
   subscribe(listener: () => void): () => void;
   set(key: MotionMappingKey, handleId: string | null): void;
   toJSON(): MotionMappingSnapshot;

@@ -3,11 +3,23 @@
 import { useEffect, useState } from "react";
 import ScrollArea from "@/components/ScrollArea";
 import type { CharacterModel } from "@/hooks/useModelLoader";
-import type { MotionHandle, MotionInfo } from "@/lib/character/types";
+import type {
+  MotionHandle,
+  MotionInfo,
+  MotionMappingKey,
+} from "@/lib/character/types";
 
 interface MotionControlWindowProps {
   activeModel: CharacterModel | null;
 }
+
+const MOTION_MAPPING_KEYS: readonly MotionMappingKey[] = ["idle", "walk", "run"];
+
+const MOTION_MAPPING_LABEL: Record<MotionMappingKey, string> = {
+  idle: "idle",
+  walk: "walk",
+  run: "run",
+};
 
 function formatDuration(sec: number | null): string {
   if (sec === null) return "--";
@@ -24,6 +36,20 @@ export default function MotionControlWindow({
   useEffect(() => {
     if (!activeModel) return;
     return activeModel.motionMapping.subscribe(forceUpdate);
+  }, [activeModel]);
+
+  useEffect(() => {
+    if (!activeModel) return;
+    const unsubscribers = [
+      activeModel.animation.on("start", forceUpdate),
+      activeModel.animation.on("end", forceUpdate),
+      activeModel.animation.on("loop", forceUpdate),
+    ];
+    return () => {
+      for (const unsubscribe of unsubscribers) {
+        unsubscribe();
+      }
+    };
   }, [activeModel]);
 
   const entries: Array<{ handle: MotionHandle; info: MotionInfo }> =
@@ -55,7 +81,6 @@ export default function MotionControlWindow({
     );
   }
 
-  const idleId = activeModel.motionMapping.idle;
   const supportsOverlay = capabilities?.layers.includes("overlay") ?? false;
 
   return (
@@ -86,9 +111,12 @@ export default function MotionControlWindow({
         style={{ maxHeight: "55vh" }}
       >
         {entries.map(({ handle, info }) => {
-          const isIdle = idleId === handle.id;
           const isActiveBase = activeBase?.id === handle.id;
           const isActiveOverlay = activeOverlay?.id === handle.id;
+          const assignedKey =
+            MOTION_MAPPING_KEYS.find(
+              (key) => activeModel.motionMapping[key] === handle.id
+            ) ?? "";
           return (
             <div
               key={handle.id}
@@ -110,6 +138,11 @@ export default function MotionControlWindow({
                 <button
                   type="button"
                   onClick={() => {
+                    if (isActiveBase) {
+                      activeModel.animation.stopLayer("base");
+                      forceUpdate();
+                      return;
+                    }
                     void activeModel.animation
                       .play(handle, "base", { loop: true })
                       .then(forceUpdate);
@@ -126,6 +159,11 @@ export default function MotionControlWindow({
                   <button
                     type="button"
                     onClick={() => {
+                      if (isActiveOverlay) {
+                        activeModel.animation.stopLayer("overlay");
+                        forceUpdate();
+                        return;
+                      }
                       void activeModel.animation
                         .play(handle, "overlay", { loop: false })
                         .then(forceUpdate);
@@ -139,46 +177,45 @@ export default function MotionControlWindow({
                     ▶ overlay
                   </button>
                 ) : null}
-                <label className="ml-auto flex items-center gap-1 text-[10px] text-gray-400">
-                  <input
-                    type="radio"
-                    name="idle-motion"
-                    checked={isIdle}
-                    onChange={() => {
-                      activeModel.motionMapping.set("idle", handle.id);
+                <div className="ml-auto flex items-center gap-1 text-[10px]">
+                  <span className="text-gray-500">割当:</span>
+                  <select
+                    value={assignedKey}
+                    onChange={(e) => {
+                      const next = e.currentTarget.value as MotionMappingKey | "";
+                      if (next) {
+                        activeModel.motionMapping.set(next, handle.id);
+                        for (const key of MOTION_MAPPING_KEYS) {
+                          if (
+                            key !== next &&
+                            activeModel.motionMapping[key] === handle.id
+                          ) {
+                            activeModel.motionMapping.set(key, null);
+                          }
+                        }
+                      } else if (assignedKey) {
+                        activeModel.motionMapping.set(
+                          assignedKey as MotionMappingKey,
+                          null
+                        );
+                      }
+                      forceUpdate();
                     }}
-                    className="accent-blue-400"
-                  />
-                  idle 割当
-                </label>
+                    className="rounded bg-gray-900 px-1 py-0.5 text-gray-200"
+                  >
+                    <option value="">--</option>
+                    {MOTION_MAPPING_KEYS.map((key) => (
+                      <option key={key} value={key}>
+                        {MOTION_MAPPING_LABEL[key]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
           );
         })}
       </ScrollArea>
-
-      <div className="mt-3 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            activeModel.motionMapping.set("idle", null);
-          }}
-          className="flex-1 rounded bg-gray-800 px-2 py-1 text-xs hover:bg-gray-700 transition-colors"
-          disabled={idleId === null}
-        >
-          idle 解除
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            activeModel.animation.stop();
-            forceUpdate();
-          }}
-          className="flex-1 rounded bg-gray-800 px-2 py-1 text-xs hover:bg-gray-700 transition-colors"
-        >
-          全停止
-        </button>
-      </div>
 
       {capabilities ? (
         <div className="mt-3 rounded bg-gray-900/40 p-2 text-[10px] text-gray-500">
