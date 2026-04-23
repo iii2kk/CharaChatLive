@@ -59,6 +59,15 @@ export default function MotionControlWindow({
           info: activeModel.animation.library.getInfo(handle),
         }))
       : [];
+  const sortedEntries =
+    activeModel?.kind === "live2d"
+      ? entries
+      : [...entries].sort((a, b) => {
+          const aIndex = a.info.sortIndex ?? Number.MAX_SAFE_INTEGER;
+          const bIndex = b.info.sortIndex ?? Number.MAX_SAFE_INTEGER;
+          if (aIndex !== bIndex) return aIndex - bIndex;
+          return a.info.name.localeCompare(b.info.name);
+        });
 
   const capabilities = activeModel?.animation.capabilities;
   const activeBase = activeModel?.animation.getActive("base") ?? null;
@@ -110,7 +119,7 @@ export default function MotionControlWindow({
         className="flex flex-col gap-2 overflow-y-auto pr-1"
         style={{ maxHeight: "55vh" }}
       >
-        {entries.map(({ handle, info }) => {
+        {sortedEntries.map(({ handle, info }) => {
           const isActiveBase = activeBase?.id === handle.id;
           const isActiveOverlay = activeOverlay?.id === handle.id;
           const assignedKey =

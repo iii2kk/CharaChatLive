@@ -405,7 +405,8 @@ export class MmdCharacterModel implements CharacterModel {
   private buildMotionInfo(
     handle: MotionHandle,
     clip: THREE.AnimationClip,
-    name: string
+    name: string,
+    sortIndex: number | null
   ): MotionInfo {
     return {
       id: handle.id,
@@ -414,6 +415,7 @@ export class MmdCharacterModel implements CharacterModel {
       loopable: true,
       source: "vmd",
       embedded: false,
+      sortIndex,
     };
   }
 
@@ -427,9 +429,10 @@ export class MmdCharacterModel implements CharacterModel {
         const clip = await this.loadClipFromUrls(urls, fileMap);
         const handle: MotionHandle = { id: mkId(), source: "vmd" };
         const name = opts?.name ?? clip.name ?? "vmd-motion";
+        const sortIndex = opts?.sortIndex ?? null;
         const entry: MmdMotionEntry = {
           handle,
-          info: this.buildMotionInfo(handle, clip, name),
+          info: this.buildMotionInfo(handle, clip, name, sortIndex),
           clip,
           disposed: false,
         };

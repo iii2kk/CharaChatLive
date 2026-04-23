@@ -105,9 +105,10 @@ export default function Home() {
 
   const attachPresetMotions = useCallback(
     (modelId: string, modelKind: "mmd" | "vrm" | "live2d") => {
-      const items = presetMotionsByKindRef(modelKind).map((m) => ({
+      const items = presetMotionsByKindRef(modelKind).map((m, index) => ({
         url: m.path,
         name: m.name,
+        sortIndex: index,
       }));
       void registerPresetMotions(modelId, items);
     },

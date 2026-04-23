@@ -388,7 +388,8 @@ export class VrmCharacterModel implements CharacterModel {
   private buildMotionInfo(
     handle: MotionHandle,
     clip: THREE.AnimationClip,
-    name: string
+    name: string,
+    sortIndex: number | null
   ): MotionInfo {
     return {
       id: handle.id,
@@ -397,6 +398,7 @@ export class VrmCharacterModel implements CharacterModel {
       loopable: true,
       source: "vrma",
       embedded: false,
+      sortIndex,
     };
   }
 
@@ -426,9 +428,10 @@ export class VrmCharacterModel implements CharacterModel {
         const clip = createVRMAnimationClip(vrmAnimation, this.vrm);
         const handle: MotionHandle = { id: mkId(), source: "vrma" };
         const name = opts?.name ?? clip.name ?? "vrma-motion";
+        const sortIndex = opts?.sortIndex ?? null;
         const entry: VrmMotionEntry = {
           handle,
-          info: this.buildMotionInfo(handle, clip, name),
+          info: this.buildMotionInfo(handle, clip, name, sortIndex),
           clip,
           disposed: false,
         };

@@ -234,13 +234,17 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         }
 
         // MMD/VRM: 各 URL を個別ハンドルとして登録し、最初の 1 つを再生
+        const baseSortIndex = targetModel.animation.library.list().length;
         const loaded = [];
-        for (const url of animationUrls) {
+        for (const [index, url] of animationUrls.entries()) {
           try {
             const handle = await targetModel.animation.library.load(
               [url],
               null,
-              { name: deriveMotionName(url) }
+              {
+                name: deriveMotionName(url),
+                sortIndex: baseSortIndex + index,
+              }
             );
             loaded.push(handle);
           } catch (err) {
@@ -274,7 +278,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
   const registerPresetMotions = useCallback(
     (
       modelId: string,
-      items: Array<{ url: string; name: string }>
+      items: Array<{ url: string; name: string; sortIndex?: number }>
     ): Promise<void> => {
       const targetModel = getModelById(modelId);
       if (!targetModel) return Promise.resolve();
@@ -282,11 +286,15 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         return Promise.resolve();
       }
       if (items.length === 0) return Promise.resolve();
+      const baseSortIndex = targetModel.animation.library.list().length;
 
       return Promise.all(
-        items.map((item) =>
+        items.map((item, index) =>
           targetModel.animation.library
-            .load([item.url], null, { name: item.name })
+            .load([item.url], null, {
+              name: item.name,
+              sortIndex: item.sortIndex ?? baseSortIndex + index,
+            })
             .then(() => item)
             .catch((err) => {
               console.error(

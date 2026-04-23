@@ -108,10 +108,13 @@ export interface MotionInfo {
   source: MotionSource;
   /** Live2D の model3.json 同梱モーションなら true */
   embedded: boolean;
+  /** 外部モーション一覧の元順序。Live2D など未使用時は null */
+  sortIndex: number | null;
 }
 
 export interface LoadOptions {
   name?: string;
+  sortIndex?: number;
 }
 
 export interface PlayOptions {

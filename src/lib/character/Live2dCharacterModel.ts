@@ -664,6 +664,7 @@ export class Live2dCharacterModel implements CharacterModel {
       loopable: true,
       source: "motion3",
       embedded,
+      sortIndex: null,
     };
   }
 
