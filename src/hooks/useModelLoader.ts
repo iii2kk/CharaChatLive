@@ -66,6 +66,11 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
     []
   );
 
+  const commitModels = useCallback((next: CharacterModel[]) => {
+    modelsRef.current = next;
+    setModels(next);
+  }, []);
+
   const getModelById = useCallback((modelId: string | null) => {
     if (!modelId) return null;
     return modelsRef.current.find((model) => model.id === modelId) ?? null;
@@ -80,12 +85,12 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
       const remainingModels = modelsRef.current.filter(
         (model) => model.id !== modelId
       );
-      syncModels(() => remainingModels);
+      commitModels(remainingModels);
       setActiveModelId((prev) =>
         prev === modelId ? remainingModels.at(-1)?.id ?? null : prev
       );
     },
-    [getModelById, syncModels]
+    [commitModels, getModelById]
   );
 
   const loadModel = useCallback(
@@ -122,7 +127,8 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
           if (model.physics.capability === "full" && model.physics.isEnabled()) {
             await model.physics.setEnabled(true).catch(() => {});
           }
-          syncModels((prev) => [...prev, model]);
+          const nextModels = [...modelsRef.current, model];
+          commitModels(nextModels);
           setActiveModelId(modelId);
           setLoading(false);
           options?.onLoaded?.(modelId, model.kind);
@@ -134,7 +140,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         });
     },
     [
-      syncModels,
+      commitModels,
       viewerSettings.live2dCanvasScale,
       viewerSettings.live2dPlaneScale,
     ]
@@ -175,7 +181,8 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
           if (model.physics.capability === "full" && model.physics.isEnabled()) {
             await model.physics.setEnabled(true).catch(() => {});
           }
-          syncModels((prev) => [...prev, model]);
+          const nextModels = [...modelsRef.current, model];
+          commitModels(nextModels);
           setActiveModelId(modelId);
           setLoading(false);
           options?.onLoaded?.(modelId, model.kind);
@@ -187,7 +194,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
         });
     },
     [
-      syncModels,
+      commitModels,
       viewerSettings.live2dCanvasScale,
       viewerSettings.live2dPlaneScale,
     ]
