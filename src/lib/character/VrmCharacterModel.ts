@@ -353,8 +353,12 @@ export class VrmCharacterModel implements CharacterModel {
         layer,
         handle: state.entry.handle,
       });
-      // ワンショット (!loop) が終わったらスロットを掃除する
-      if (state.action === event.action && !event.action.isRunning()) {
+      // ワンショット終了後は最後のポーズが残らないよう action 自体を停止する。
+      // clampWhenFinished=true のまま放置すると、UI 上は overlay=null でも
+      // 実際の姿勢だけが残り続けてしまう。
+      if (state.action === event.action) {
+        event.action.stop();
+        mixer.uncacheClip(event.action.getClip());
         this.layerStates[layer] = null;
       }
     });
@@ -467,6 +471,9 @@ export class VrmCharacterModel implements CharacterModel {
       state.action.fadeOut(fadeOutSec);
     } else {
       state.action.stop();
+      if (this.animationMixer) {
+        this.animationMixer.uncacheClip(state.action.getClip());
+      }
     }
     this.layerStates[layer] = null;
   }
@@ -492,7 +499,8 @@ export class VrmCharacterModel implements CharacterModel {
       loop ? THREE.LoopRepeat : THREE.LoopOnce,
       loop ? Infinity : 1
     );
-    newAction.clampWhenFinished = !loop;
+    // overlay は README 通り「終わったら base だけに戻る」ので最終姿勢を保持しない。
+    newAction.clampWhenFinished = layer === "base" ? !loop : false;
     newAction.timeScale = speed;
     newAction.weight = weight;
     newAction.reset();
