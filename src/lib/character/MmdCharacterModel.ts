@@ -41,8 +41,15 @@ interface MmdConstructorOptions {
   initialPhysics: MmdPhysicsState;
 }
 
+interface MmdPhysicsRuntime {
+  setGravity(gravity: THREE.Vector3): void;
+  reset?(): void;
+  warmup?(cycles: number): void;
+}
+
 interface MmdHelperMeshState {
-  physics?: { setGravity(gravity: THREE.Vector3): void };
+  looped?: boolean;
+  physics?: MmdPhysicsRuntime;
 }
 
 interface MmdHelperMeshStateWithMixer extends MmdHelperMeshState {
@@ -57,16 +64,22 @@ function getPhysicsControllerFromHelper(
   helper: MMDAnimationHelper | null,
   mesh: THREE.SkinnedMesh
 ) {
-  if (!helper) return null;
-  return (helper as HelperWithInternals).objects?.get(mesh)?.physics ?? null;
+  return getHelperMeshState(helper, mesh)?.physics ?? null;
 }
 
 function getMixerFromHelper(
   helper: MMDAnimationHelper | null,
   mesh: THREE.SkinnedMesh
 ): THREE.AnimationMixer | null {
+  return getHelperMeshState(helper, mesh)?.mixer ?? null;
+}
+
+function getHelperMeshState(
+  helper: MMDAnimationHelper | null,
+  mesh: THREE.SkinnedMesh
+): MmdHelperMeshStateWithMixer | null {
   if (!helper) return null;
-  return (helper as HelperWithInternals).objects?.get(mesh)?.mixer ?? null;
+  return (helper as HelperWithInternals).objects?.get(mesh) ?? null;
 }
 
 interface MmdMotionEntry {
@@ -282,42 +295,87 @@ export class MmdCharacterModel implements CharacterModel {
   private async rebuildHelper(): Promise<void> {
     const token = ++this.rebuildToken;
 
-    if (this.helper) {
-      try {
-        this.helper.remove(this.mesh);
-      } catch {
-        // ignore
-      }
-      this.helper = null;
-      this.mixerListenersBound = false;
-    }
-
     if (!this.animationClip && !this.physicsEnabled) {
+      this.replaceHelperAnimation(null);
       return;
     }
 
-    if (this.physicsEnabled) {
+    const hasPhysics = getPhysicsControllerFromHelper(this.helper, this.mesh);
+    const needsNewHelper = !this.helper || (this.physicsEnabled && !hasPhysics);
+
+    if (this.physicsEnabled && needsNewHelper) {
       await ensureAmmo();
     }
 
     if (token !== this.rebuildToken) return;
 
-    const helper = new MMDAnimationHelper({
-      afterglow: 2.0,
-      resetPhysicsOnLoop: true,
-    });
+    if (needsNewHelper) {
+      const helper = new MMDAnimationHelper({
+        afterglow: 2.0,
+        resetPhysicsOnLoop: true,
+      });
 
-    helper.add(this.mesh, {
-      animation: this.animationClip ?? undefined,
-      physics: this.physicsEnabled,
-      gravity: this.gravity.clone(),
-    });
+      // 前回の物理計算で変形したボーンを次の VMD の初期状態に持ち越さない。
+      this.mesh.pose();
 
-    if (!this.physicsEnabled) {
-      helper.enable("physics", false);
+      helper.add(this.mesh, {
+        animation: this.animationClip ?? undefined,
+        physics: this.physicsEnabled,
+        gravity: this.gravity.clone(),
+      });
+
+      if (!this.physicsEnabled) {
+        helper.enable("physics", false);
+      }
+
+      this.helper = helper;
+      this.mixerListenersBound = false;
+      return;
     }
 
-    this.helper = helper;
+    this.replaceHelperAnimation(this.animationClip);
+
+    const physics = getPhysicsControllerFromHelper(this.helper, this.mesh);
+    if (physics && this.physicsEnabled) {
+      physics.reset?.();
+      physics.warmup?.(60);
+    }
+  }
+
+  private replaceHelperAnimation(clip: THREE.AnimationClip | null): void {
+    const state = getHelperMeshState(this.helper, this.mesh);
+    if (!state) return;
+
+    if (state.mixer) {
+      state.mixer.stopAllAction();
+      state.mixer.uncacheRoot(this.mesh);
+      state.mixer = undefined;
+    }
+
+    this.mixerListenersBound = false;
+    state.looped = false;
+
+    if (!clip) {
+      return;
+    }
+
+    this.mesh.pose();
+
+    const mixer = new THREE.AnimationMixer(this.mesh);
+    mixer.clipAction(clip).play();
+    mixer.addEventListener("loop", (event) => {
+      const clipTracks =
+        (event.action as THREE.AnimationAction & { _clip?: THREE.AnimationClip })
+          ._clip?.tracks ?? [];
+      if (
+        clipTracks.length > 0 &&
+        !clipTracks[0].name.startsWith(".bones")
+      ) {
+        return;
+      }
+      state.looped = true;
+    });
+    state.mixer = mixer;
   }
 
   private createExpressionController(): ExpressionController {
@@ -489,18 +547,7 @@ export class MmdCharacterModel implements CharacterModel {
   }
 
   private stopBaseInternal(): void {
-    if (!this.helper) {
-      this.activeBase = null;
-      this.animationClip = null;
-      return;
-    }
-    try {
-      this.helper.remove(this.mesh);
-    } catch {
-      // ignore
-    }
-    this.helper = null;
-    this.mixerListenersBound = false;
+    this.replaceHelperAnimation(null);
     this.animationClip = null;
     this.activeBase = null;
   }
