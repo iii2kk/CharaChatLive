@@ -11,6 +11,11 @@ import {
   syncLive2dRenderer,
   syncLive2dViewerSettings,
 } from "@/lib/character/Live2dCharacterModel";
+import {
+  refreshModelInteractionMetrics,
+  setModelWorldPosition,
+  type ModelInteractionMetrics,
+} from "@/lib/character/modelTransform";
 import type { SceneLight } from "@/lib/scene-lights";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import FreeCameraControls from "./FreeCameraControls";
@@ -31,6 +36,198 @@ interface CharacterSceneProps {
   onLightsChange: React.Dispatch<React.SetStateAction<SceneLight[]>>;
   interactionMode: InteractionMode;
   viewerSettings: ViewerSettings;
+}
+
+const FLOOR_Y = 0;
+const FALLBACK_PLACEMENT_DISTANCE = 12;
+const MIN_RAY_PLACEMENT_DISTANCE = 2;
+const MAX_RAY_PLACEMENT_DISTANCE = 80;
+const COLLISION_PADDING = 0.5;
+const SEARCH_SEGMENTS = 16;
+const MAX_SEARCH_RINGS = 6;
+
+interface PlacementFootprint {
+  position: THREE.Vector3;
+  radius: number;
+}
+
+function getHorizontalForward(
+  camera: THREE.Camera,
+  controlsTarget: THREE.Vector3 | null
+): THREE.Vector3 {
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  forward.y = 0;
+
+  if (forward.lengthSq() > 1e-6) {
+    return forward.normalize();
+  }
+
+  if (controlsTarget) {
+    forward.copy(controlsTarget).sub(camera.position);
+    forward.y = 0;
+    if (forward.lengthSq() > 1e-6) {
+      return forward.normalize();
+    }
+  }
+
+  return new THREE.Vector3(0, 0, -1);
+}
+
+function getPreferredFloorPoint(
+  camera: THREE.Camera,
+  controlsTarget: THREE.Vector3 | null
+): THREE.Vector3 {
+  const direction = new THREE.Vector3();
+  camera.getWorldDirection(direction);
+
+  if (Math.abs(direction.y) > 1e-6) {
+    const distance = (FLOOR_Y - camera.position.y) / direction.y;
+    if (
+      Number.isFinite(distance) &&
+      distance >= MIN_RAY_PLACEMENT_DISTANCE &&
+      distance <= MAX_RAY_PLACEMENT_DISTANCE
+    ) {
+      return camera.position.clone().add(direction.multiplyScalar(distance));
+    }
+  }
+
+  const horizontalForward = getHorizontalForward(camera, controlsTarget);
+  return camera.position
+    .clone()
+    .add(horizontalForward.multiplyScalar(FALLBACK_PLACEMENT_DISTANCE))
+    .setY(FLOOR_Y);
+}
+
+function getFootprint(
+  model: CharacterModel,
+  metrics: ModelInteractionMetrics | null
+): PlacementFootprint | null {
+  if (!metrics) return null;
+  return {
+    position: model.object.position.clone(),
+    radius: metrics.radius,
+  };
+}
+
+function getCollisionScore(
+  position: THREE.Vector3,
+  radius: number,
+  footprints: PlacementFootprint[]
+): number {
+  let score = 0;
+
+  for (const footprint of footprints) {
+    const dx = position.x - footprint.position.x;
+    const dz = position.z - footprint.position.z;
+    const distance = Math.hypot(dx, dz);
+    const requiredDistance = radius + footprint.radius + COLLISION_PADDING;
+    const overlap = requiredDistance - distance;
+    if (overlap > 0) {
+      score += overlap;
+    }
+  }
+
+  return score;
+}
+
+function getAngleOffsets(segmentCount: number): number[] {
+  const offsets = [0];
+  const half = segmentCount / 2;
+
+  for (let i = 1; i < half; i += 1) {
+    offsets.push(i, -i);
+  }
+
+  offsets.push(half);
+  return offsets;
+}
+
+function findNonCollidingPosition(
+  preferredPosition: THREE.Vector3,
+  radius: number,
+  footprints: PlacementFootprint[],
+  searchDirection: THREE.Vector3
+): THREE.Vector3 {
+  let bestPosition = preferredPosition.clone();
+  let bestScore = getCollisionScore(bestPosition, radius, footprints);
+
+  if (bestScore <= 0) {
+    return bestPosition;
+  }
+
+  const step = radius * 2 + COLLISION_PADDING;
+  const baseAngle = Math.atan2(searchDirection.z, searchDirection.x);
+  const angleStep = (Math.PI * 2) / SEARCH_SEGMENTS;
+  const angleOffsets = getAngleOffsets(SEARCH_SEGMENTS);
+
+  for (let ring = 1; ring <= MAX_SEARCH_RINGS; ring += 1) {
+    const searchRadius = step * ring;
+
+    for (const offset of angleOffsets) {
+      const angle = baseAngle + offset * angleStep;
+      const candidate = preferredPosition
+        .clone()
+        .add(
+          new THREE.Vector3(
+            Math.cos(angle) * searchRadius,
+            0,
+            Math.sin(angle) * searchRadius
+          )
+        );
+      const score = getCollisionScore(candidate, radius, footprints);
+
+      if (score <= 0) {
+        return candidate;
+      }
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestPosition = candidate;
+      }
+    }
+  }
+
+  return bestPosition;
+}
+
+function placeNewModels(
+  newModels: CharacterModel[],
+  existingModels: CharacterModel[],
+  camera: THREE.Camera,
+  controlsTarget: THREE.Vector3 | null
+): void {
+  const footprints: PlacementFootprint[] = existingModels
+    .map((model) => getFootprint(model, refreshModelInteractionMetrics(model.object)))
+    .filter((footprint): footprint is PlacementFootprint => footprint !== null);
+  const preferredFloorPoint = getPreferredFloorPoint(camera, controlsTarget);
+  const searchDirection = getHorizontalForward(camera, controlsTarget);
+
+  for (const model of newModels) {
+    const metrics = refreshModelInteractionMetrics(model.object);
+    if (!metrics) {
+      continue;
+    }
+
+    const preferredPosition = preferredFloorPoint
+      .clone()
+      .setY(FLOOR_Y - metrics.footOffsetY);
+    const nextPosition = findNonCollidingPosition(
+      preferredPosition,
+      metrics.radius,
+      footprints,
+      searchDirection
+    );
+
+    setModelWorldPosition(model.object, nextPosition);
+    model.object.updateMatrixWorld(true);
+
+    const placedMetrics = refreshModelInteractionMetrics(model.object);
+    const footprint = getFootprint(model, placedMetrics);
+    if (footprint) {
+      footprints.push(footprint);
+    }
+  }
 }
 
 export default function CharacterScene({
@@ -67,6 +264,9 @@ export default function CharacterScene({
   const [isDraggingLight, setIsDraggingLight] = useState(false);
   const [isHoveringLightHandle, setIsHoveringLightHandle] = useState(false);
   const previousModelCountRef = useRef(models.length);
+  const previousModelIdsRef = useRef<Set<string>>(
+    new Set(models.map((model) => model.id))
+  );
   const previousInteractionModeRef = useRef(interactionMode);
   const freeCameraLookTargetRef = useRef<THREE.Vector3 | null>(null);
   const placementCameraControlsEnabled =
@@ -165,6 +365,26 @@ export default function CharacterScene({
     live2dQualityMultiplier,
     live2dViewportHeightUsage,
   ]);
+
+  useEffect(() => {
+    const previousModelIds = previousModelIdsRef.current;
+    const currentModelIds = new Set(models.map((model) => model.id));
+    const newModels = models.filter((model) => !previousModelIds.has(model.id));
+
+    if (newModels.length > 0 && camera instanceof THREE.PerspectiveCamera) {
+      const newModelIds = new Set(newModels.map((model) => model.id));
+      const existingModels = models.filter((model) => !newModelIds.has(model.id));
+      placeNewModels(
+        newModels,
+        existingModels,
+        camera,
+        controlsRef.current?.target.clone() ?? defaultTarget
+      );
+      invalidate();
+    }
+
+    previousModelIdsRef.current = currentModelIds;
+  }, [camera, defaultTarget, invalidate, models]);
 
   useEffect(() => {
     if (

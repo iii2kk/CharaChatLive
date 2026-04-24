@@ -6,7 +6,7 @@ import * as THREE from "three";
 import type { CharacterModel } from "@/hooks/useModelLoader";
 import {
   refreshModelInteractionMetrics,
-  setModelManualWorldPosition,
+  setModelWorldPosition,
   type ModelInteractionMetrics,
 } from "@/lib/character/modelTransform";
 
@@ -227,7 +227,7 @@ export default function ModelPlacementGizmo({
       const delta = planeHitPoint.clone().sub(dragState.startHitPoint);
       const nextPosition = dragState.startPosition.clone().add(delta);
       nextPosition.y = dragState.startPosition.y;
-      setModelManualWorldPosition(modelObject, nextPosition);
+      setModelWorldPosition(modelObject, nextPosition);
       return;
     }
 

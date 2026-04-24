@@ -5,11 +5,7 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { CharacterModel } from "@/hooks/useModelLoader";
 import {
-  ensureModelTransformState,
-  getModelBasePosition,
-  getModelManualOffset,
   refreshModelInteractionMetrics,
-  setModelLayoutOffset,
   type ModelInteractionMetrics,
 } from "@/lib/character/modelTransform";
 import type { ViewerSettings } from "@/lib/viewer-settings";
@@ -22,7 +18,6 @@ interface CharacterModelsProps {
   viewerSettings: ViewerSettings;
 }
 
-const MODEL_GAP = 2;
 const SELECTION_HIGHLIGHT_DURATION_MS = 2000;
 
 export default function CharacterModels({
@@ -92,46 +87,6 @@ export default function CharacterModels({
     );
     selectionRing.scale.setScalar(metrics.radius);
   });
-
-  useEffect(() => {
-    if (models.length === 0) {
-      return;
-    }
-
-    const footprints = models.map((model) => {
-      ensureModelTransformState(model.object);
-
-      model.object.updateMatrixWorld(true);
-
-      const box = new THREE.Box3().setFromObject(model.object);
-      const size = box.getSize(new THREE.Vector3());
-      const width = Math.max(size.x, size.z, 1);
-
-      return {
-        model,
-        basePosition: getModelBasePosition(model.object),
-        width,
-      };
-    });
-
-    const totalWidth =
-      footprints.reduce((sum, { width }) => sum + width, 0) +
-      MODEL_GAP * Math.max(footprints.length - 1, 0);
-
-    let cursorX = -totalWidth / 2;
-
-    for (const { model, basePosition, width } of footprints) {
-      const centerX = cursorX + width / 2;
-      const manualOffset = getModelManualOffset(model.object);
-      setModelLayoutOffset(model.object, centerX);
-      model.object.position.set(
-        basePosition.x + centerX + manualOffset.x,
-        basePosition.y + manualOffset.y,
-        basePosition.z + manualOffset.z
-      );
-      cursorX += width + MODEL_GAP;
-    }
-  }, [models]);
 
   useEffect(() => {
     if (highlightTimeoutRef.current) {
