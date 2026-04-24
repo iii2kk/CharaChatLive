@@ -41,7 +41,8 @@ interface CharacterSceneProps {
 const FLOOR_Y = 0;
 const FALLBACK_PLACEMENT_DISTANCE = 12;
 const MIN_RAY_PLACEMENT_DISTANCE = 2;
-const MAX_RAY_PLACEMENT_DISTANCE = 80;
+const MAX_NATURAL_PLACEMENT_DISTANCE = 120;
+const SHALLOW_VIEW_Y_THRESHOLD = 0.12;
 const COLLISION_PADDING = 0.5;
 const SEARCH_SEGMENTS = 16;
 const MAX_SEARCH_RINGS = 6;
@@ -81,15 +82,32 @@ function getPreferredFloorPoint(
   const direction = new THREE.Vector3();
   camera.getWorldDirection(direction);
 
-  if (Math.abs(direction.y) > 1e-6) {
+  if (direction.y < -1e-6) {
     const distance = (FLOOR_Y - camera.position.y) / direction.y;
-    if (
-      Number.isFinite(distance) &&
-      distance >= MIN_RAY_PLACEMENT_DISTANCE &&
-      distance <= MAX_RAY_PLACEMENT_DISTANCE
-    ) {
-      return camera.position.clone().add(direction.multiplyScalar(distance));
+    if (Number.isFinite(distance) && distance >= MIN_RAY_PLACEMENT_DISTANCE) {
+      if (
+        distance <= MAX_NATURAL_PLACEMENT_DISTANCE ||
+        Math.abs(direction.y) >= SHALLOW_VIEW_Y_THRESHOLD
+      ) {
+        return camera.position.clone().add(direction.multiplyScalar(distance));
+      }
+
+      const horizontalForward = direction.clone().setY(0);
+      if (horizontalForward.lengthSq() > 1e-6) {
+        return camera.position
+          .clone()
+          .add(
+            horizontalForward
+              .normalize()
+              .multiplyScalar(MAX_NATURAL_PLACEMENT_DISTANCE)
+          )
+          .setY(FLOOR_Y);
+      }
     }
+  }
+
+  if (controlsTarget) {
+    return controlsTarget.clone().setY(FLOOR_Y);
   }
 
   const horizontalForward = getHorizontalForward(camera, controlsTarget);
