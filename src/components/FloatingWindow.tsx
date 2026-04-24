@@ -38,6 +38,14 @@ export default function FloatingWindow({
     originY: number;
   } | null>(null);
 
+  const handleFocusPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      onFocus();
+    },
+    [onFocus]
+  );
+
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
@@ -52,9 +60,8 @@ export default function FloatingWindow({
         originX: position.x,
         originY: position.y,
       };
-      onFocus();
     },
-    [position.x, position.y, onFocus]
+    [position.x, position.y]
   );
 
   const handlePointerMove = useCallback(
@@ -95,7 +102,7 @@ export default function FloatingWindow({
       ref={windowRef}
       className="fixed pointer-events-auto bg-gray-900/95 border border-gray-700 rounded-lg shadow-xl backdrop-blur-sm text-gray-100"
       style={{ left: position.x, top: position.y, zIndex }}
-      onPointerDown={onFocus}
+      onPointerDownCapture={handleFocusPointerDown}
     >
       {/* Title bar */}
       <div

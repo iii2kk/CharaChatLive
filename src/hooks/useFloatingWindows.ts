@@ -143,7 +143,6 @@ export function useFloatingWindows(config: FloatingWindowLayerConfig = DEFAULT_L
     buildDefaultStates(config)
   );
   const [menuMinimized, setMenuMinimized] = useState(false);
-  const nextZIndexRef = useRef<number>(config.minZIndex + WINDOW_IDS.length);
   const hydratedRef = useRef(false);
 
   // Load saved state from localStorage after mount (client only)
@@ -155,11 +154,6 @@ export function useFloatingWindows(config: FloatingWindowLayerConfig = DEFAULT_L
       setWindowStates(saved.windows);
       setMenuMinimized(saved.menuMinimized);
     }, 0);
-    const zMap: Record<string, number> = {};
-    for (const id of WINDOW_IDS) {
-      zMap[id] = saved.windows[id].zIndex;
-    }
-    nextZIndexRef.current = computeNextZIndex(zMap, config);
     return () => {
       window.clearTimeout(hydrationTimer);
     };
@@ -194,8 +188,12 @@ export function useFloatingWindows(config: FloatingWindowLayerConfig = DEFAULT_L
         for (const wid of WINDOW_IDS) {
           currentZMap[wid] = prev[wid].zIndex;
         }
-        const result = bringWindowToFront(id, currentZMap, nextZIndexRef.current, config);
-        nextZIndexRef.current = result.nextZIndex;
+        const result = bringWindowToFront(
+          id,
+          currentZMap,
+          computeNextZIndex(currentZMap, config),
+          config
+        );
         const next = { ...prev };
         for (const wid of WINDOW_IDS) {
           if (result.zMap[wid] !== prev[wid].zIndex) {
@@ -229,8 +227,12 @@ export function useFloatingWindows(config: FloatingWindowLayerConfig = DEFAULT_L
         for (const wid of WINDOW_IDS) {
           currentZMap[wid] = prev[wid].zIndex;
         }
-        const result = bringWindowToFront(id, currentZMap, nextZIndexRef.current, config);
-        nextZIndexRef.current = result.nextZIndex;
+        const result = bringWindowToFront(
+          id,
+          currentZMap,
+          computeNextZIndex(currentZMap, config),
+          config
+        );
         const next = { ...prev };
         for (const wid of WINDOW_IDS) {
           if (result.zMap[wid] !== prev[wid].zIndex) {
@@ -255,8 +257,12 @@ export function useFloatingWindows(config: FloatingWindowLayerConfig = DEFAULT_L
         for (const wid of WINDOW_IDS) {
           currentZMap[wid] = prev[wid].zIndex;
         }
-        const result = bringWindowToFront(id, currentZMap, nextZIndexRef.current, config);
-        nextZIndexRef.current = result.nextZIndex;
+        const result = bringWindowToFront(
+          id,
+          currentZMap,
+          computeNextZIndex(currentZMap, config),
+          config
+        );
         const next = { ...prev };
         for (const wid of WINDOW_IDS) {
           if (result.zMap[wid] !== prev[wid].zIndex) {
