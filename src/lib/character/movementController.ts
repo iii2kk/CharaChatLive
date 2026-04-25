@@ -25,6 +25,7 @@ export interface MovementOptions {
   runDistanceThreshold: number;
   arrivalEpsilon: number;
   rotateTowards: boolean;
+  rotationSpeedDegPerSec: number;
 }
 
 const DEFAULT_OPTIONS: MovementOptions = {
@@ -33,6 +34,7 @@ const DEFAULT_OPTIONS: MovementOptions = {
   runDistanceThreshold: 4.0,
   arrivalEpsilon: 0.05,
   rotateTowards: true,
+  rotationSpeedDegPerSec: 360,
 };
 
 export class MovementController {
@@ -41,6 +43,7 @@ export class MovementController {
   private opts: MovementOptions;
   private unsubscribeOverride: () => void;
   private readonly modelForwardYawOffset: number;
+  private targetYaw: number | null = null;
 
   constructor(
     private readonly model: CharacterModel,
@@ -81,7 +84,7 @@ export class MovementController {
       startedAt: performance.now(),
     };
 
-    this.rotateTowardsDirection(dx, dz);
+    this.updateTargetYaw(dx, dz);
     this.applyAutoForState();
 
     if (wasMoving && previousMode !== mode) {
@@ -101,6 +104,7 @@ export class MovementController {
     if (reason === "user") {
       this.applyAutoForState();
     }
+    this.targetYaw = null;
     this.emit({ type: "cancelled", reason });
   }
 
@@ -141,7 +145,8 @@ export class MovementController {
     pos.x += ix * stepDistance;
     pos.z += iz * stepDistance;
 
-    this.rotateTowardsDirection(ix, iz);
+    this.updateTargetYaw(ix, iz);
+    this.rotateTowards(delta);
   }
 
   getState(): MovementState {
@@ -176,10 +181,30 @@ export class MovementController {
     for (const cb of this.listeners) cb(event);
   }
 
-  private rotateTowardsDirection(x: number, z: number): void {
+  private updateTargetYaw(x: number, z: number): void {
     if (!this.opts.rotateTowards) return;
     if (Math.hypot(x, z) <= 1e-6) return;
-    this.model.object.rotation.y =
-      this.modelForwardYawOffset + Math.atan2(x, z);
+    this.targetYaw = this.modelForwardYawOffset + Math.atan2(x, z);
+  }
+
+  private rotateTowards(delta: number): void {
+    if (!this.opts.rotateTowards) return;
+    if (this.targetYaw === null) return;
+
+    const current = this.model.object.rotation.y;
+    const diff = THREE.MathUtils.euclideanModulo(
+      this.targetYaw - current + Math.PI,
+      Math.PI * 2
+    ) - Math.PI;
+    const maxStep = THREE.MathUtils.degToRad(
+      this.opts.rotationSpeedDegPerSec
+    ) * delta;
+
+    if (Math.abs(diff) <= maxStep) {
+      this.model.object.rotation.y = this.targetYaw;
+      return;
+    }
+
+    this.model.object.rotation.y = current + Math.sign(diff) * maxStep;
   }
 }

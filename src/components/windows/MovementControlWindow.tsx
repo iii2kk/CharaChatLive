@@ -196,6 +196,22 @@ export default function MovementControlWindow({
             className="flex-1 rounded bg-gray-900 px-1 py-0.5 text-gray-200"
           />
         </label>
+        <label className="mt-1 flex items-center gap-2">
+          <span className="w-24">回転速度 (deg/s)</span>
+          <input
+            type="number"
+            step="30"
+            min="0"
+            value={opts.rotationSpeedDegPerSec}
+            onChange={(e) =>
+              updateOption(
+                "rotationSpeedDegPerSec",
+                Number(e.currentTarget.value)
+              )
+            }
+            className="flex-1 rounded bg-gray-900 px-1 py-0.5 text-gray-200"
+          />
+        </label>
       </div>
     </div>
   );
