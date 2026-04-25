@@ -7,6 +7,7 @@ import type { ModelEntry, ModelFile } from "@/types/models";
 import type { PresetMotion } from "@/types/motions";
 import type { TexturePresets } from "@/types/textures";
 import { useModelLoader } from "@/hooks/useModelLoader";
+import { useCharacterMovement } from "@/hooks/useCharacterMovement";
 import type { InteractionMode } from "@/lib/interaction-mode";
 import {
   defaultViewerSettings,
@@ -59,6 +60,7 @@ export default function Home() {
     setModelRenderScale,
     setModelDisplayScale,
   } = useModelLoader(viewerSettings);
+  const { getController: getMovementController } = useCharacterMovement(models);
   const [animationUrlState, setAnimationUrlState] = useState<string[]>([]);
   const [presetModels, setPresetModels] = useState<ModelEntry[]>([]);
   const [presetMotions, setPresetMotions] = useState<PresetMotion[]>([]);
@@ -241,6 +243,7 @@ export default function Home() {
           onLightsChange={setLights}
           interactionMode={interactionMode}
           viewerSettings={viewerSettings}
+          getMovementController={getMovementController}
         />
       </div>
       <FloatingWindowOverlay
@@ -269,6 +272,7 @@ export default function Home() {
         onViewerSettingsChange={setViewerSettings}
         onRenderScaleChange={setModelRenderScale}
         onDisplayScaleChange={setModelDisplayScale}
+        getMovementController={getMovementController}
       />
     </div>
   );

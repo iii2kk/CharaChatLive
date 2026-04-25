@@ -11,6 +11,7 @@ import {
 import type { ModelEntry, ModelFile } from "@/types/models";
 import type { TexturePresets } from "@/types/textures";
 import type { CharacterModel } from "@/hooks/useModelLoader";
+import type { MovementController } from "@/lib/character/movementController";
 import type { InteractionMode } from "@/lib/interaction-mode";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { SceneLight } from "@/lib/scene-lights";
@@ -25,6 +26,7 @@ import InteractionModeWindow from "@/components/windows/InteractionModeWindow";
 import DisplaySettingsWindow from "@/components/windows/DisplaySettingsWindow";
 import ExpressionControlWindow from "@/components/windows/ExpressionControlWindow";
 import MotionControlWindow from "@/components/windows/MotionControlWindow";
+import MovementControlWindow from "@/components/windows/MovementControlWindow";
 import MenuWindow from "@/components/windows/MenuWindow";
 
 interface FloatingWindowOverlayProps {
@@ -53,6 +55,7 @@ interface FloatingWindowOverlayProps {
   onViewerSettingsChange: React.Dispatch<React.SetStateAction<ViewerSettings>>;
   onRenderScaleChange: (modelId: string, scale: number) => void;
   onDisplayScaleChange: (modelId: string, scale: number) => void;
+  getMovementController: (modelId: string | null) => MovementController | null;
 }
 
 /** Content window IDs (all except menu) */
@@ -86,6 +89,7 @@ export default function FloatingWindowOverlay({
   onViewerSettingsChange,
   onRenderScaleChange,
   onDisplayScaleChange,
+  getMovementController,
 }: FloatingWindowOverlayProps) {
   const {
     windowStates,
@@ -295,6 +299,22 @@ export default function FloatingWindowOverlay({
         onClose={() => closeWindow("motionControl")}
       >
         <MotionControlWindow activeModel={activeModel} />
+      </FloatingWindow>
+
+      {/* Movement Control */}
+      <FloatingWindow
+        title={WINDOW_LABELS.movementControl}
+        visible={windowStates.movementControl.visible}
+        zIndex={windowStates.movementControl.zIndex}
+        position={windowStates.movementControl.position}
+        onPositionChange={(pos) => setPosition("movementControl", pos)}
+        onFocus={() => bringToFront("movementControl")}
+        onClose={() => closeWindow("movementControl")}
+      >
+        <MovementControlWindow
+          activeModel={activeModel}
+          controller={getMovementController(activeModelId)}
+        />
       </FloatingWindow>
     </div>
   );

@@ -5,6 +5,7 @@ import { Suspense, useEffect } from "react";
 import * as THREE from "three";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { CharacterModel } from "@/hooks/useModelLoader";
+import type { MovementController } from "@/lib/character/movementController";
 import type { InteractionMode } from "@/lib/interaction-mode";
 import type { SceneLight } from "@/lib/scene-lights";
 import CharacterScene from "./CharacterScene";
@@ -21,6 +22,7 @@ interface CharacterViewerProps {
   onLightsChange: React.Dispatch<React.SetStateAction<SceneLight[]>>;
   interactionMode: InteractionMode;
   viewerSettings: ViewerSettings;
+  getMovementController?: (modelId: string) => MovementController | null;
 }
 
 const baseColors = new WeakMap<THREE.Material, THREE.Color>();
@@ -94,6 +96,7 @@ export default function CharacterViewer({
   onLightsChange,
   interactionMode,
   viewerSettings,
+  getMovementController,
 }: CharacterViewerProps) {
   return (
     <Canvas
@@ -115,6 +118,7 @@ export default function CharacterViewer({
           onLightsChange={onLightsChange}
           interactionMode={interactionMode}
           viewerSettings={viewerSettings}
+          getMovementController={getMovementController}
         />
       </Suspense>
     </Canvas>

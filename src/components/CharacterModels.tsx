@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { CharacterModel } from "@/hooks/useModelLoader";
+import { attachIdleMotion } from "@/lib/character/idleMotionController";
+import type { MovementController } from "@/lib/character/movementController";
 import {
   refreshModelInteractionMetrics,
   type ModelInteractionMetrics,
@@ -16,6 +18,7 @@ interface CharacterModelsProps {
   onActiveModelChange: (modelId: string) => void;
   selectionEnabled: boolean;
   viewerSettings: ViewerSettings;
+  getMovementController?: (modelId: string) => MovementController | null;
 }
 
 const SELECTION_HIGHLIGHT_DURATION_MS = 2000;
@@ -26,6 +29,7 @@ export default function CharacterModels({
   onActiveModelChange,
   selectionEnabled,
   viewerSettings,
+  getMovementController,
 }: CharacterModelsProps) {
   const { camera, scene, gl } = useThree();
   const selectionRingRef = useRef<THREE.Mesh | null>(null);
@@ -46,6 +50,7 @@ export default function CharacterModels({
 
     for (const model of models) {
       model.update(delta);
+      getMovementController?.(model.id)?.update(delta);
     }
 
     const frameContext = {
@@ -173,6 +178,14 @@ export default function CharacterModels({
     },
     []
   );
+
+  // 各モデルに idle 自動再生を attach
+  useEffect(() => {
+    const disposers = models.map((model) => attachIdleMotion(model));
+    return () => {
+      for (const dispose of disposers) dispose();
+    };
+  }, [models]);
 
   return (
     <>

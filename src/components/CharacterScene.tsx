@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { CharacterModel } from "@/hooks/useModelLoader";
+import type { MovementController } from "@/lib/character/movementController";
 import type { InteractionMode } from "@/lib/interaction-mode";
 import {
   syncLive2dRenderer,
@@ -36,6 +37,7 @@ interface CharacterSceneProps {
   onLightsChange: React.Dispatch<React.SetStateAction<SceneLight[]>>;
   interactionMode: InteractionMode;
   viewerSettings: ViewerSettings;
+  getMovementController?: (modelId: string) => MovementController | null;
 }
 
 const FLOOR_Y = 0;
@@ -260,6 +262,7 @@ export default function CharacterScene({
   onLightsChange,
   interactionMode,
   viewerSettings,
+  getMovementController,
 }: CharacterSceneProps) {
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 10, 0), []);
   const {
@@ -553,6 +556,7 @@ export default function CharacterScene({
         onActiveModelChange={onActiveModelChange}
         selectionEnabled={interactionMode !== "freeCamera"}
         viewerSettings={viewerSettings}
+        getMovementController={getMovementController}
       />
 
       <ModelPlacementGizmo
