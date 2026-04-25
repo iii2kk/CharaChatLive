@@ -156,23 +156,7 @@ export class VrmCharacterModel implements CharacterModel {
     this.bones = this.createBoneController();
     this.animation = this.createAnimationController();
     this.motionMapping = new MutableMotionMapping();
-    this.motionMapping.subscribe(() => {
-      this.applyIdleMotion();
-    });
     this.physics = this.createPhysicsController();
-  }
-
-  private applyIdleMotion(): void {
-    const id = this.motionMapping.idle;
-    if (!id) {
-      this.animation.stopLayer("base");
-      return;
-    }
-    const handle = this.animation.library
-      .list()
-      .find((h) => h.id === id);
-    if (!handle) return;
-    void this.animation.play(handle, "base", { loop: true });
   }
 
   static load(opts: {
@@ -470,6 +454,11 @@ export class VrmCharacterModel implements CharacterModel {
   private stopLayerInternal(layer: MotionLayer, fadeOutSec: number): void {
     const state = this.layerStates[layer];
     if (!state) return;
+    this.events.emit({
+      type: "end",
+      layer,
+      handle: state.entry.handle,
+    });
     if (fadeOutSec > 0) {
       state.action.fadeOut(fadeOutSec);
     } else {
@@ -510,6 +499,11 @@ export class VrmCharacterModel implements CharacterModel {
 
     const existing = this.layerStates[layer];
     if (existing) {
+      this.events.emit({
+        type: "end",
+        layer,
+        handle: existing.entry.handle,
+      });
       if (fadeInSec > 0) {
         existing.action.crossFadeTo(newAction, fadeInSec, false);
         newAction.play();

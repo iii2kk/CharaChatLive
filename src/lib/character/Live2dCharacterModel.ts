@@ -248,23 +248,7 @@ export class Live2dCharacterModel implements CharacterModel {
     this.bones = { list: () => [], find: () => null };
     this.animation = this.createAnimationController();
     this.motionMapping = new MutableMotionMapping();
-    this.motionMapping.subscribe(() => {
-      this.applyIdleMotion();
-    });
     this.physics = this.createPhysicsController();
-  }
-
-  private applyIdleMotion(): void {
-    const id = this.motionMapping.idle;
-    if (!id) {
-      this.animation.stopLayer("base");
-      return;
-    }
-    const handle = this.animation.library
-      .list()
-      .find((h) => h.id === id);
-    if (!handle) return;
-    void this.animation.play(handle, "base", { loop: true });
   }
 
   static async load(opts: {
@@ -798,6 +782,15 @@ export class Live2dCharacterModel implements CharacterModel {
       return;
     }
 
+    const previous = this.layerStates[layer];
+    if (previous && previous !== entry) {
+      this.animationEvents.emit({
+        type: "end",
+        layer,
+        handle: previous.handle,
+      });
+    }
+
     this.layerStates[layer] = entry;
     if (layer === "base") {
       this.hasStartedMotion = true;
@@ -856,6 +849,11 @@ export class Live2dCharacterModel implements CharacterModel {
       stopLayer: (layer) => {
         const state = this.layerStates[layer];
         if (!state) return;
+        this.animationEvents.emit({
+          type: "end",
+          layer,
+          handle: state.handle,
+        });
         // Cubism はレイヤー別停止を持たないため、overlay 停止時は
         // stopAllMotions → base を再開、base 停止時は全停止する。
         if (layer === "overlay") {

@@ -1,5 +1,6 @@
 import * as THREE from "three";
-import type { CharacterModel, MotionHandle } from "./types";
+import type { AutoMotionController } from "./autoMotionController";
+import type { CharacterModel } from "./types";
 
 export type MovementMode = "walk" | "run" | "none";
 
@@ -38,20 +39,19 @@ export class MovementController {
   private state: MovementState = { kind: "idle" };
   private listeners = new Set<(event: MovementEvent) => void>();
   private opts: MovementOptions;
-  private currentMotionId: string | null = null;
-  private unsubscribeStart: () => void;
+  private unsubscribeOverride: () => void;
 
   constructor(
     private readonly model: CharacterModel,
+    private readonly autoMotion: AutoMotionController,
     opts: Partial<MovementOptions> = {}
   ) {
     this.opts = { ...DEFAULT_OPTIONS, ...opts };
 
-    this.unsubscribeStart = model.animation.on("start", (event) => {
-      if (this.state.kind !== "moving") return;
-      if (event.layer !== "base") return;
-      if (event.handle.id === this.currentMotionId) return;
-      this.cancelInternal("manual-base-play");
+    this.unsubscribeOverride = autoMotion.onManualOverrideChange((active) => {
+      if (active && this.state.kind === "moving") {
+        this.cancelInternal("manual-base-play");
+      }
     });
   }
 
@@ -63,15 +63,7 @@ export class MovementController {
 
     let mode: MovementMode =
       distance > this.opts.runDistanceThreshold ? "run" : "walk";
-    const handleId = this.model.motionMapping[mode];
-    let handle: MotionHandle | null = null;
-    if (handleId) {
-      handle =
-        this.model.animation.library
-          .list()
-          .find((h) => h.id === handleId) ?? null;
-    }
-    if (!handle) {
+    if (!this.model.motionMapping[mode]) {
       mode = "none";
     }
 
@@ -87,12 +79,8 @@ export class MovementController {
       startedAt: performance.now(),
     };
 
-    if (handle) {
-      this.currentMotionId = handle.id;
-      void this.model.animation.play(handle, "base", { loop: true });
-    } else {
-      this.currentMotionId = null;
-    }
+    this.rotateTowardsDirection(dx, dz);
+    this.applyAutoForState();
 
     if (wasMoving && previousMode !== mode) {
       this.emit({ type: "modeChanged", mode });
@@ -107,13 +95,22 @@ export class MovementController {
 
   private cancelInternal(reason: "user" | "manual-base-play"): void {
     if (this.state.kind === "idle") return;
-    const mode = this.state.mode;
     this.state = { kind: "idle" };
-    if (reason === "user" && (mode === "walk" || mode === "run")) {
-      this.model.animation.stopLayer("base");
+    if (reason === "user") {
+      this.applyAutoForState();
     }
-    this.currentMotionId = null;
     this.emit({ type: "cancelled", reason });
+  }
+
+  /** 現在の state に応じて AutoMotionController に desired を伝える */
+  private applyAutoForState(): void {
+    if (this.state.kind === "idle") {
+      this.autoMotion.setDesired("idle");
+    } else if (this.state.mode === "walk" || this.state.mode === "run") {
+      this.autoMotion.setDesired(this.state.mode);
+    } else {
+      this.autoMotion.setDesired(null);
+    }
   }
 
   update(delta: number): void {
@@ -126,12 +123,8 @@ export class MovementController {
 
     if (distance <= this.opts.arrivalEpsilon) {
       const target = this.state.target.clone();
-      const mode = this.state.mode;
       this.state = { kind: "idle" };
-      if (mode === "walk" || mode === "run") {
-        this.model.animation.stopLayer("base");
-      }
-      this.currentMotionId = null;
+      this.applyAutoForState();
       this.emit({ type: "arrived", target });
       return;
     }
@@ -146,9 +139,7 @@ export class MovementController {
     pos.x += ix * stepDistance;
     pos.z += iz * stepDistance;
 
-    if (this.opts.rotateTowards) {
-      this.model.object.rotation.y = Math.atan2(ix, iz);
-    }
+    this.rotateTowardsDirection(ix, iz);
   }
 
   getState(): MovementState {
@@ -171,19 +162,21 @@ export class MovementController {
   }
 
   dispose(): void {
-    this.unsubscribeStart();
-    if (
-      this.state.kind === "moving" &&
-      (this.state.mode === "walk" || this.state.mode === "run")
-    ) {
-      this.model.animation.stopLayer("base");
+    this.unsubscribeOverride();
+    if (this.state.kind === "moving") {
+      this.state = { kind: "idle" };
+      this.autoMotion.setDesired("idle");
     }
-    this.state = { kind: "idle" };
-    this.currentMotionId = null;
     this.listeners.clear();
   }
 
   private emit(event: MovementEvent): void {
     for (const cb of this.listeners) cb(event);
+  }
+
+  private rotateTowardsDirection(x: number, z: number): void {
+    if (!this.opts.rotateTowards) return;
+    if (Math.hypot(x, z) <= 1e-6) return;
+    this.model.object.rotation.y = Math.atan2(x, z);
   }
 }

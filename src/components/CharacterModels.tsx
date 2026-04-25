@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { CharacterModel } from "@/hooks/useModelLoader";
-import { attachIdleMotion } from "@/lib/character/idleMotionController";
 import type { MovementController } from "@/lib/character/movementController";
 import {
   refreshModelInteractionMetrics,
@@ -178,14 +177,6 @@ export default function CharacterModels({
     },
     []
   );
-
-  // 各モデルに idle 自動再生を attach
-  useEffect(() => {
-    const disposers = models.map((model) => attachIdleMotion(model));
-    return () => {
-      for (const dispose of disposers) dispose();
-    };
-  }, [models]);
 
   return (
     <>

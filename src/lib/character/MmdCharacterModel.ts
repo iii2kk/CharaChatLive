@@ -191,23 +191,7 @@ export class MmdCharacterModel implements CharacterModel {
     this.bones = this.createBoneController();
     this.animation = this.createAnimationController();
     this.motionMapping = new MutableMotionMapping();
-    this.motionMapping.subscribe(() => {
-      this.applyIdleMotion();
-    });
     this.physics = this.createPhysicsController();
-  }
-
-  private applyIdleMotion(): void {
-    const id = this.motionMapping.idle;
-    if (!id) {
-      this.animation.stopLayer("base");
-      return;
-    }
-    const handle = this.animation.library
-      .list()
-      .find((h) => h.id === id);
-    if (!handle) return;
-    void this.animation.play(handle, "base", { loop: true });
   }
 
   static load(opts: {
@@ -547,6 +531,10 @@ export class MmdCharacterModel implements CharacterModel {
   }
 
   private stopBaseInternal(): void {
+    const prev = this.activeBase;
+    if (prev) {
+      this.events.emit({ type: "end", layer: "base", handle: prev.handle });
+    }
     this.replaceHelperAnimation(null);
     this.animationClip = null;
     this.activeBase = null;
