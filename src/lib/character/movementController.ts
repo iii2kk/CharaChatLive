@@ -40,6 +40,7 @@ export class MovementController {
   private listeners = new Set<(event: MovementEvent) => void>();
   private opts: MovementOptions;
   private unsubscribeOverride: () => void;
+  private readonly modelForwardYawOffset: number;
 
   constructor(
     private readonly model: CharacterModel,
@@ -47,6 +48,7 @@ export class MovementController {
     opts: Partial<MovementOptions> = {}
   ) {
     this.opts = { ...DEFAULT_OPTIONS, ...opts };
+    this.modelForwardYawOffset = model.object.rotation.y;
 
     this.unsubscribeOverride = autoMotion.onManualOverrideChange((active) => {
       if (active && this.state.kind === "moving") {
@@ -177,6 +179,7 @@ export class MovementController {
   private rotateTowardsDirection(x: number, z: number): void {
     if (!this.opts.rotateTowards) return;
     if (Math.hypot(x, z) <= 1e-6) return;
-    this.model.object.rotation.y = Math.atan2(x, z);
+    this.model.object.rotation.y =
+      this.modelForwardYawOffset + Math.atan2(x, z);
   }
 }
