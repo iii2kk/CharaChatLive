@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, type RefObject } from "react";
-import { useFrame, type ThreeEvent } from "@react-three/fiber";
+import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import {
   refreshModelInteractionMetrics,
@@ -36,7 +36,15 @@ type RotateDragState = {
   startRotationY: number;
 };
 
-type DragState = MoveDragState | RotateDragState;
+type VerticalDragState = {
+  kind: "vertical";
+  pointerId: number;
+  plane: THREE.Plane;
+  startHitPoint: THREE.Vector3;
+  startPosition: THREE.Vector3;
+};
+
+type DragState = MoveDragState | RotateDragState | VerticalDragState;
 
 interface ModelPlacementGizmoProps {
   model: PlacementGizmoTarget | null;
@@ -46,6 +54,10 @@ interface ModelPlacementGizmoProps {
    * 識別子。値が変わると refreshModelInteractionMetrics を再実行する。
    */
   scaleVersion?: number;
+  /**
+   * 縦軸 (Y) 方向の移動ハンドルを表示するか。プロップ用。
+   */
+  enableVerticalMove?: boolean;
 }
 
 function getPointerCaptureTarget(
@@ -67,7 +79,8 @@ function updateGizmoFromModel(
   metrics: ModelInteractionMetrics | null,
   groupRef: RefObject<THREE.Group | null>,
   movePadRef: RefObject<THREE.Mesh | null>,
-  rotateRingRef: RefObject<THREE.Mesh | null>
+  rotateRingRef: RefObject<THREE.Mesh | null>,
+  verticalHandleRef: RefObject<THREE.Group | null>
 ) {
   if (
     !model ||
@@ -92,18 +105,26 @@ function updateGizmoFromModel(
   );
   movePadRef.current.scale.setScalar(movePadScale);
   rotateRingRef.current.scale.setScalar(metrics.radius);
+  if (verticalHandleRef.current) {
+    verticalHandleRef.current.scale.setScalar(
+      Math.max(1.0, metrics.radius * 0.4)
+    );
+  }
 }
 
 export default function ModelPlacementGizmo({
   model,
   onDraggingChange,
   scaleVersion,
+  enableVerticalMove,
 }: ModelPlacementGizmoProps) {
+  const { camera } = useThree();
   const modelObjectRef = useRef<THREE.Object3D | null>(null);
   const interactionMetricsRef = useRef<ModelInteractionMetrics | null>(null);
   const groupRef = useRef<THREE.Group | null>(null);
   const movePadRef = useRef<THREE.Mesh | null>(null);
   const rotateRingRef = useRef<THREE.Mesh | null>(null);
+  const verticalHandleRef = useRef<THREE.Group | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const planeHitPoint = useMemo(() => new THREE.Vector3(), []);
   const planeNormal = useMemo(() => new THREE.Vector3(0, 1, 0), []);
@@ -114,7 +135,8 @@ export default function ModelPlacementGizmo({
       interactionMetricsRef.current,
       groupRef,
       movePadRef,
-      rotateRingRef
+      rotateRingRef,
+      verticalHandleRef
     );
   });
 
@@ -216,6 +238,52 @@ export default function ModelPlacementGizmo({
     };
   };
 
+  const beginVerticalDrag = (event: ThreeEvent<PointerEvent>) => {
+    if (!model || !groupRef.current) {
+      return;
+    }
+    if (event.nativeEvent.altKey) {
+      return;
+    }
+
+    // Y 軸を含み、カメラに対しなるべく正対する垂直平面を作る。
+    const center = groupRef.current.position.clone();
+    const camDir = new THREE.Vector3();
+    camera.getWorldDirection(camDir);
+    // 水平方向の法線 (Y 成分は 0 に潰す)
+    const normal = new THREE.Vector3(camDir.x, 0, camDir.z);
+    if (normal.lengthSq() < 1e-6) {
+      normal.set(0, 0, 1);
+    }
+    normal.normalize();
+
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+      normal,
+      center
+    );
+
+    if (!intersectPlane(event, plane, planeHitPoint)) {
+      return;
+    }
+
+    const target = getPointerCaptureTarget(event);
+    if (!target) {
+      return;
+    }
+
+    event.stopPropagation();
+    target.setPointerCapture(event.pointerId);
+    onDraggingChange?.(true);
+
+    dragStateRef.current = {
+      kind: "vertical",
+      pointerId: event.pointerId,
+      plane,
+      startHitPoint: planeHitPoint.clone(),
+      startPosition: model.object.position.clone(),
+    };
+  };
+
   const updateDrag = (event: ThreeEvent<PointerEvent>) => {
     const modelObject = modelObjectRef.current;
     if (!model || !modelObject) {
@@ -237,6 +305,14 @@ export default function ModelPlacementGizmo({
       const delta = planeHitPoint.clone().sub(dragState.startHitPoint);
       const nextPosition = dragState.startPosition.clone().add(delta);
       nextPosition.y = dragState.startPosition.y;
+      setModelWorldPosition(modelObject, nextPosition);
+      return;
+    }
+
+    if (dragState.kind === "vertical") {
+      const dy = planeHitPoint.y - dragState.startHitPoint.y;
+      const nextPosition = dragState.startPosition.clone();
+      nextPosition.y = dragState.startPosition.y + dy;
       setModelWorldPosition(modelObject, nextPosition);
       return;
     }
@@ -308,6 +384,37 @@ export default function ModelPlacementGizmo({
           side={THREE.DoubleSide}
         />
       </mesh>
+
+      {enableVerticalMove && (
+        <group
+          ref={verticalHandleRef}
+          onPointerDown={beginVerticalDrag}
+          onPointerMove={updateDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+        >
+          {/* shaft */}
+          <mesh position-y={1.5} renderOrder={14}>
+            <cylinderGeometry args={[0.08, 0.08, 3, 16]} />
+            <meshBasicMaterial
+              color="#34d399"
+              transparent
+              opacity={0.9}
+              depthWrite={false}
+            />
+          </mesh>
+          {/* arrow head */}
+          <mesh position-y={3.2} renderOrder={14}>
+            <coneGeometry args={[0.25, 0.5, 16]} />
+            <meshBasicMaterial
+              color="#34d399"
+              transparent
+              opacity={0.9}
+              depthWrite={false}
+            />
+          </mesh>
+        </group>
+      )}
     </group>
   );
 }

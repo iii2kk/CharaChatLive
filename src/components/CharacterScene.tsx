@@ -613,6 +613,10 @@ export default function CharacterScene({
         model={interactionMode === "placement" ? placementGizmoTarget : null}
         onDraggingChange={setIsDraggingPlacementGizmo}
         scaleVersion={sceneObjectScaleVersion}
+        enableVerticalMove={
+          placementGizmoTarget !== null &&
+          sceneObjects.some((o) => o.id === placementGizmoTarget.id)
+        }
       />
 
       <SceneLights
