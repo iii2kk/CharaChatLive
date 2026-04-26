@@ -34,6 +34,7 @@ import DisplaySettingsWindow from "@/components/windows/DisplaySettingsWindow";
 import ExpressionControlWindow from "@/components/windows/ExpressionControlWindow";
 import MotionControlWindow from "@/components/windows/MotionControlWindow";
 import MovementControlWindow from "@/components/windows/MovementControlWindow";
+import LipSyncWindow from "@/components/windows/LipSyncWindow";
 import MenuWindow from "@/components/windows/MenuWindow";
 
 interface FloatingWindowOverlayProps {
@@ -71,6 +72,11 @@ interface FloatingWindowOverlayProps {
   onRenderScaleChange: (modelId: string, scale: number) => void;
   onDisplayScaleChange: (modelId: string, scale: number) => void;
   getMovementController: (modelId: string | null) => MovementController | null;
+  onLipSyncPlay: (
+    modelId: string,
+    url: string
+  ) => Promise<HTMLAudioElement | null>;
+  onLipSyncStop: (modelId: string) => void;
 }
 
 /** Content window IDs (all except menu) */
@@ -113,6 +119,8 @@ export default function FloatingWindowOverlay({
   onRenderScaleChange,
   onDisplayScaleChange,
   getMovementController,
+  onLipSyncPlay,
+  onLipSyncStop,
 }: FloatingWindowOverlayProps) {
   const {
     windowStates,
@@ -360,6 +368,23 @@ export default function FloatingWindowOverlay({
         <MovementControlWindow
           activeModel={activeModel}
           controller={getMovementController(activeModelId)}
+        />
+      </FloatingWindow>
+
+      {/* Lip Sync */}
+      <FloatingWindow
+        title={WINDOW_LABELS.lipSync}
+        visible={windowStates.lipSync.visible}
+        zIndex={windowStates.lipSync.zIndex}
+        position={windowStates.lipSync.position}
+        onPositionChange={(pos) => setPosition("lipSync", pos)}
+        onFocus={() => bringToFront("lipSync")}
+        onClose={() => closeWindow("lipSync")}
+      >
+        <LipSyncWindow
+          activeModel={activeModel}
+          onPlayAudio={onLipSyncPlay}
+          onStop={onLipSyncStop}
         />
       </FloatingWindow>
     </div>

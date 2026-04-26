@@ -64,7 +64,11 @@ export default function Home() {
     setModelDisplayScale,
   } = useModelLoader(viewerSettings);
   const { getController: getMovementController } = useCharacterMovement(models);
-  const { getController: getLipSyncController } = useLipSync(models);
+  const {
+    getController: getLipSyncController,
+    playAudio: playLipSyncAudio,
+    stop: stopLipSyncAudio,
+  } = useLipSync(models);
   const {
     sceneObjects,
     activeSceneObjectId,
@@ -351,6 +355,8 @@ export default function Home() {
         onRenderScaleChange={setModelRenderScale}
         onDisplayScaleChange={setModelDisplayScale}
         getMovementController={getMovementController}
+        onLipSyncPlay={playLipSyncAudio}
+        onLipSyncStop={stopLipSyncAudio}
       />
     </div>
   );
