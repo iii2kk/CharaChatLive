@@ -9,6 +9,7 @@ import type { TexturePresets } from "@/types/textures";
 import { useModelLoader } from "@/hooks/useModelLoader";
 import { useSceneObjects } from "@/hooks/useSceneObjects";
 import { useCharacterMovement } from "@/hooks/useCharacterMovement";
+import { useLipSync } from "@/hooks/useLipSync";
 import type { PlacementGizmoTarget } from "@/components/ModelPlacementGizmo";
 import type { InteractionMode } from "@/lib/interaction-mode";
 import {
@@ -63,6 +64,7 @@ export default function Home() {
     setModelDisplayScale,
   } = useModelLoader(viewerSettings);
   const { getController: getMovementController } = useCharacterMovement(models);
+  const { getController: getLipSyncController } = useLipSync(models);
   const {
     sceneObjects,
     activeSceneObjectId,
@@ -306,6 +308,7 @@ export default function Home() {
           interactionMode={interactionMode}
           viewerSettings={viewerSettings}
           getMovementController={getMovementController}
+          getLipSyncController={getLipSyncController}
           sceneObjects={sceneObjects}
           activeSceneObjectId={activeSceneObjectId}
           onActiveSceneObjectChange={handleActiveSceneObjectChange}

@@ -7,6 +7,7 @@ import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { MovementController } from "@/lib/character/movementController";
+import type { LipSyncController } from "@/lib/character/lipSyncController";
 import type { InteractionMode } from "@/lib/interaction-mode";
 import {
   syncLive2dRenderer,
@@ -42,6 +43,7 @@ interface CharacterSceneProps {
   interactionMode: InteractionMode;
   viewerSettings: ViewerSettings;
   getMovementController?: (modelId: string) => MovementController | null;
+  getLipSyncController?: (modelId: string) => LipSyncController | null;
   sceneObjects: SceneObject[];
   activeSceneObjectId: string | null;
   onActiveSceneObjectChange: (id: string) => void;
@@ -278,6 +280,7 @@ export default function CharacterScene({
   interactionMode,
   viewerSettings,
   getMovementController,
+  getLipSyncController,
   sceneObjects,
   activeSceneObjectId,
   onActiveSceneObjectChange,
@@ -600,6 +603,7 @@ export default function CharacterScene({
         selectionEnabled={interactionMode !== "freeCamera"}
         viewerSettings={viewerSettings}
         getMovementController={getMovementController}
+        getLipSyncController={getLipSyncController}
       />
 
       <SceneObjects

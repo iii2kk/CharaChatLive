@@ -5,6 +5,7 @@ import { useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
 import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { MovementController } from "@/lib/character/movementController";
+import type { LipSyncController } from "@/lib/character/lipSyncController";
 import {
   refreshModelInteractionMetrics,
   type ModelInteractionMetrics,
@@ -18,6 +19,7 @@ interface CharacterModelsProps {
   selectionEnabled: boolean;
   viewerSettings: ViewerSettings;
   getMovementController?: (modelId: string) => MovementController | null;
+  getLipSyncController?: (modelId: string) => LipSyncController | null;
 }
 
 const SELECTION_HIGHLIGHT_DURATION_MS = 2000;
@@ -29,6 +31,7 @@ export default function CharacterModels({
   selectionEnabled,
   viewerSettings,
   getMovementController,
+  getLipSyncController,
 }: CharacterModelsProps) {
   const { camera, scene, gl } = useThree();
   const selectionRingRef = useRef<THREE.Mesh | null>(null);
@@ -50,6 +53,7 @@ export default function CharacterModels({
     for (const model of models) {
       model.update(delta);
       getMovementController?.(model.id)?.update(delta);
+      getLipSyncController?.(model.id)?.update(delta);
     }
 
     const frameContext = {

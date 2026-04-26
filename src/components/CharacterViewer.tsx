@@ -6,6 +6,7 @@ import * as THREE from "three";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { MovementController } from "@/lib/character/movementController";
+import type { LipSyncController } from "@/lib/character/lipSyncController";
 import type { InteractionMode } from "@/lib/interaction-mode";
 import type { SceneLight } from "@/lib/scene-lights";
 import type { SceneObject } from "@/types/sceneObjects";
@@ -25,6 +26,7 @@ interface CharacterViewerProps {
   interactionMode: InteractionMode;
   viewerSettings: ViewerSettings;
   getMovementController?: (modelId: string) => MovementController | null;
+  getLipSyncController?: (modelId: string) => LipSyncController | null;
   sceneObjects: SceneObject[];
   activeSceneObjectId: string | null;
   onActiveSceneObjectChange: (id: string) => void;
@@ -119,6 +121,7 @@ export default function CharacterViewer({
   interactionMode,
   viewerSettings,
   getMovementController,
+  getLipSyncController,
   sceneObjects,
   activeSceneObjectId,
   onActiveSceneObjectChange,
@@ -150,6 +153,7 @@ export default function CharacterViewer({
           interactionMode={interactionMode}
           viewerSettings={viewerSettings}
           getMovementController={getMovementController}
+          getLipSyncController={getLipSyncController}
           sceneObjects={sceneObjects}
           activeSceneObjectId={activeSceneObjectId}
           onActiveSceneObjectChange={onActiveSceneObjectChange}
