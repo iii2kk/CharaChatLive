@@ -51,3 +51,4 @@ logs/
 gpu_report/
 snapshot/
 public/objects/
+tools/__pycache__/
