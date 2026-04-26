@@ -652,27 +652,34 @@ export class MmdCharacterModel implements CharacterModel {
     };
   }
 
-  private getTPoseOffsets():
-    | { boneName: string; q: THREE.Quaternion }[]
+  private getTPoseBoneCorrections():
+    | Array<{
+        boneName: string;
+        q: THREE.Quaternion;
+        mode: "right-mult" | "conjugate";
+      }>
     | null {
     const cfg = this.tPoseCorrection;
     if (!cfg || !cfg.enabled) return null;
     const angle = THREE.MathUtils.degToRad(cfg.armAngleDeg);
+    const qLeft = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 0, -1),
+      angle
+    );
+    const qRight = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 0, 1),
+      angle
+    );
+    // 腕: 右乗算 (q' = q_vmd * qOffset) で T-pose ボーン位置を A-pose 方向へ回転
+    // ひじ/手首: 共役変換 (q' = qOffset⁻¹ * q_vmd * qOffset) で
+    //           子ボーン位置の T→A 差分を相殺する
     return [
-      {
-        boneName: "左腕",
-        q: new THREE.Quaternion().setFromAxisAngle(
-          new THREE.Vector3(0, 0, -1),
-          angle
-        ),
-      },
-      {
-        boneName: "右腕",
-        q: new THREE.Quaternion().setFromAxisAngle(
-          new THREE.Vector3(0, 0, 1),
-          angle
-        ),
-      },
+      { boneName: "左腕", q: qLeft, mode: "right-mult" },
+      { boneName: "右腕", q: qRight, mode: "right-mult" },
+      { boneName: "左ひじ", q: qLeft, mode: "conjugate" },
+      { boneName: "右ひじ", q: qRight, mode: "conjugate" },
+      { boneName: "左手首", q: qLeft, mode: "conjugate" },
+      { boneName: "右手首", q: qRight, mode: "conjugate" },
     ];
   }
 
@@ -682,7 +689,7 @@ export class MmdCharacterModel implements CharacterModel {
       console.warn("[MMD] Tポーズ補正: skeleton が存在しません");
       return;
     }
-    const want = ["左腕", "右腕"];
+    const want = ["左腕", "右腕", "左ひじ", "右ひじ", "左手首", "右手首"];
     const found: string[] = [];
     const missing: string[] = [];
     for (const name of want) {
@@ -698,17 +705,21 @@ export class MmdCharacterModel implements CharacterModel {
     if (missing.length > 0) {
       const armish = skel.bones
         .map((b) => b.name)
-        .filter((n) => /腕|arm|肩|shoulder/i.test(n));
+        .filter((n) => /腕|肘|ひじ|手首|arm|elbow|wrist|肩|shoulder/i.test(n));
       console.info("[MMD] 参考: 腕系ボーン候補:", armish);
     }
   }
 
   private applyTPoseRestOffset(): void {
-    const offsets = this.getTPoseOffsets();
-    if (!offsets) return;
+    const corrections = this.getTPoseBoneCorrections();
+    if (!corrections) return;
     const skel = this.mesh.skeleton;
     if (!skel) return;
-    for (const { boneName, q } of offsets) {
+    // rest 時 (q_vmd=identity):
+    //   right-mult: identity * qOffset = qOffset → ボーン回転をセット
+    //   conjugate:  qOffset⁻¹ * identity * qOffset = identity → 何もしない
+    for (const { boneName, q, mode } of corrections) {
+      if (mode !== "right-mult") continue;
       const bone = skel.getBoneByName(boneName);
       if (!bone) continue;
       bone.quaternion.copy(q);
@@ -719,8 +730,8 @@ export class MmdCharacterModel implements CharacterModel {
   private applyTPoseCorrection(
     clip: THREE.AnimationClip
   ): THREE.AnimationClip {
-    const offsets = this.getTPoseOffsets();
-    if (!offsets) return clip;
+    const corrections = this.getTPoseBoneCorrections();
+    if (!corrections) return clip;
 
     const cached = this.correctedClipCache.get(clip);
     if (cached) return cached;
@@ -732,11 +743,10 @@ export class MmdCharacterModel implements CharacterModel {
 
     let modified = 0;
     let injected = 0;
-    for (const { boneName, q: qOffset } of offsets) {
+    let skipped = 0;
+    for (const { boneName, q: qOffset, mode } of corrections) {
       if (!skeletonBoneNames.has(boneName)) {
-        console.warn(
-          `[MMD] Tポーズ補正: ボーン "${boneName}" がスケルトンに存在しないためスキップ`
-        );
+        skipped++;
         continue;
       }
       const trackName = `.bones[${boneName}].quaternion`;
@@ -745,16 +755,22 @@ export class MmdCharacterModel implements CharacterModel {
         const values = track.values;
         const qVmd = new THREE.Quaternion();
         const qNew = new THREE.Quaternion();
+        const qOffsetInv = qOffset.clone().invert();
         for (let i = 0; i < values.length; i += 4) {
           qVmd.set(values[i], values[i + 1], values[i + 2], values[i + 3]);
-          qNew.copy(qOffset).multiply(qVmd);
+          if (mode === "right-mult") {
+            qNew.copy(qVmd).multiply(qOffset);
+          } else {
+            qNew.copy(qOffsetInv).multiply(qVmd).multiply(qOffset);
+          }
           values[i] = qNew.x;
           values[i + 1] = qNew.y;
           values[i + 2] = qNew.z;
           values[i + 3] = qNew.w;
         }
         modified++;
-      } else {
+      } else if (mode === "right-mult") {
+        // 腕は track が無くても rest で qOffset 必要なので注入
         out.tracks.push(
           new THREE.QuaternionKeyframeTrack(
             trackName,
@@ -764,9 +780,10 @@ export class MmdCharacterModel implements CharacterModel {
         );
         injected++;
       }
+      // conjugate モードで track 無し → rest = identity で問題なし
     }
     console.info(
-      `[MMD] Tポーズ補正 clip "${clip.name || "(unnamed)"}": modified=${modified}, injected=${injected}`
+      `[MMD] Tポーズ補正 clip "${clip.name || "(unnamed)"}": modified=${modified}, injected=${injected}, skippedBones=${skipped}`
     );
 
     this.correctedClipCache.set(clip, out);
