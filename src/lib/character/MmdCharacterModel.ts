@@ -33,12 +33,25 @@ interface MmdPhysicsState {
   gravity: THREE.Vector3;
 }
 
+interface TPoseCorrectionOption {
+  enabled: boolean;
+  armAngleDeg?: number;
+}
+
+interface ResolvedTPoseCorrection {
+  enabled: boolean;
+  armAngleDeg: number;
+}
+
+const DEFAULT_T_POSE_ARM_ANGLE_DEG = 35;
+
 interface MmdConstructorOptions {
   id: string;
   name: string;
   mesh: THREE.SkinnedMesh;
   fileMap: FileMap | null;
   initialPhysics: MmdPhysicsState;
+  tPoseCorrection?: TPoseCorrectionOption;
 }
 
 interface MmdPhysicsRuntime {
@@ -174,6 +187,11 @@ export class MmdCharacterModel implements CharacterModel {
   private activeBase: MmdMotionEntry | null = null;
   private events = new AnimationEventEmitter();
   private mixerListenersBound = false;
+  private tPoseCorrection: ResolvedTPoseCorrection | null;
+  private correctedClipCache = new WeakMap<
+    THREE.AnimationClip,
+    THREE.AnimationClip
+  >();
 
   constructor(opts: MmdConstructorOptions) {
     this.id = opts.id;
@@ -183,6 +201,17 @@ export class MmdCharacterModel implements CharacterModel {
     this.fileMap = opts.fileMap;
     this.physicsEnabled = opts.initialPhysics.enabled;
     this.gravity = opts.initialPhysics.gravity.clone();
+    this.tPoseCorrection = opts.tPoseCorrection?.enabled
+      ? {
+          enabled: true,
+          armAngleDeg:
+            opts.tPoseCorrection.armAngleDeg ?? DEFAULT_T_POSE_ARM_ANGLE_DEG,
+        }
+      : null;
+    if (this.tPoseCorrection) {
+      this.logTPoseDiagnostics();
+      this.applyTPoseRestOffset();
+    }
 
     this.expressions = this.createExpressionController();
     this.expressionMapping = buildAutoMapping((name) =>
@@ -200,6 +229,7 @@ export class MmdCharacterModel implements CharacterModel {
     url: string;
     fileMap: FileMap | null;
     initialPhysics: MmdPhysicsState;
+    tPoseCorrection?: TPoseCorrectionOption;
   }): Promise<MmdCharacterModel> {
     return new Promise((resolve, reject) => {
       const manager = buildLoadingManager(opts.fileMap);
@@ -216,6 +246,7 @@ export class MmdCharacterModel implements CharacterModel {
               mesh,
               fileMap: opts.fileMap,
               initialPhysics: opts.initialPhysics,
+              tPoseCorrection: opts.tPoseCorrection,
             })
           );
         },
@@ -301,6 +332,7 @@ export class MmdCharacterModel implements CharacterModel {
 
       // 前回の物理計算で変形したボーンを次の VMD の初期状態に持ち越さない。
       this.mesh.pose();
+    this.applyTPoseRestOffset();
 
       helper.add(this.mesh, {
         animation: this.animationClip ?? undefined,
@@ -344,6 +376,7 @@ export class MmdCharacterModel implements CharacterModel {
     }
 
     this.mesh.pose();
+    this.applyTPoseRestOffset();
 
     const mixer = new THREE.AnimationMixer(this.mesh);
     mixer.clipAction(clip).play();
@@ -549,7 +582,7 @@ export class MmdCharacterModel implements CharacterModel {
       const prev = this.activeBase;
       this.events.emit({ type: "end", layer: "base", handle: prev.handle });
     }
-    this.animationClip = entry.clip;
+    this.animationClip = this.applyTPoseCorrection(entry.clip);
     this.activeBase = entry;
     await this.rebuildHelper();
     this.ensureMixerListeners();
@@ -617,6 +650,127 @@ export class MmdCharacterModel implements CharacterModel {
       },
       on: (event, cb) => this.events.on(event, cb),
     };
+  }
+
+  private getTPoseOffsets():
+    | { boneName: string; q: THREE.Quaternion }[]
+    | null {
+    const cfg = this.tPoseCorrection;
+    if (!cfg || !cfg.enabled) return null;
+    const angle = THREE.MathUtils.degToRad(cfg.armAngleDeg);
+    return [
+      {
+        boneName: "左腕",
+        q: new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 0, -1),
+          angle
+        ),
+      },
+      {
+        boneName: "右腕",
+        q: new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 0, 1),
+          angle
+        ),
+      },
+    ];
+  }
+
+  private logTPoseDiagnostics(): void {
+    const skel = this.mesh.skeleton;
+    if (!skel) {
+      console.warn("[MMD] Tポーズ補正: skeleton が存在しません");
+      return;
+    }
+    const want = ["左腕", "右腕"];
+    const found: string[] = [];
+    const missing: string[] = [];
+    for (const name of want) {
+      if (skel.bones.some((b) => b.name === name)) found.push(name);
+      else missing.push(name);
+    }
+    console.info(
+      `[MMD] Tポーズ補正 有効 (armAngleDeg=${this.tPoseCorrection?.armAngleDeg}). 検出ボーン:`,
+      found,
+      "未検出:",
+      missing
+    );
+    if (missing.length > 0) {
+      const armish = skel.bones
+        .map((b) => b.name)
+        .filter((n) => /腕|arm|肩|shoulder/i.test(n));
+      console.info("[MMD] 参考: 腕系ボーン候補:", armish);
+    }
+  }
+
+  private applyTPoseRestOffset(): void {
+    const offsets = this.getTPoseOffsets();
+    if (!offsets) return;
+    const skel = this.mesh.skeleton;
+    if (!skel) return;
+    for (const { boneName, q } of offsets) {
+      const bone = skel.getBoneByName(boneName);
+      if (!bone) continue;
+      bone.quaternion.copy(q);
+    }
+    this.mesh.updateMatrixWorld(true);
+  }
+
+  private applyTPoseCorrection(
+    clip: THREE.AnimationClip
+  ): THREE.AnimationClip {
+    const offsets = this.getTPoseOffsets();
+    if (!offsets) return clip;
+
+    const cached = this.correctedClipCache.get(clip);
+    if (cached) return cached;
+
+    const out = clip.clone();
+    const skeletonBoneNames = new Set(
+      (this.mesh.skeleton?.bones ?? []).map((b) => b.name)
+    );
+
+    let modified = 0;
+    let injected = 0;
+    for (const { boneName, q: qOffset } of offsets) {
+      if (!skeletonBoneNames.has(boneName)) {
+        console.warn(
+          `[MMD] Tポーズ補正: ボーン "${boneName}" がスケルトンに存在しないためスキップ`
+        );
+        continue;
+      }
+      const trackName = `.bones[${boneName}].quaternion`;
+      const track = out.tracks.find((t) => t.name === trackName);
+      if (track && track instanceof THREE.QuaternionKeyframeTrack) {
+        const values = track.values;
+        const qVmd = new THREE.Quaternion();
+        const qNew = new THREE.Quaternion();
+        for (let i = 0; i < values.length; i += 4) {
+          qVmd.set(values[i], values[i + 1], values[i + 2], values[i + 3]);
+          qNew.copy(qOffset).multiply(qVmd);
+          values[i] = qNew.x;
+          values[i + 1] = qNew.y;
+          values[i + 2] = qNew.z;
+          values[i + 3] = qNew.w;
+        }
+        modified++;
+      } else {
+        out.tracks.push(
+          new THREE.QuaternionKeyframeTrack(
+            trackName,
+            [0],
+            [qOffset.x, qOffset.y, qOffset.z, qOffset.w]
+          )
+        );
+        injected++;
+      }
+    }
+    console.info(
+      `[MMD] Tポーズ補正 clip "${clip.name || "(unnamed)"}": modified=${modified}, injected=${injected}`
+    );
+
+    this.correctedClipCache.set(clip, out);
+    return out;
   }
 
   private createPhysicsController(): PhysicsController {

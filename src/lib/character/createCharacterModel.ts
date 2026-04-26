@@ -15,6 +15,12 @@ export interface CreateCharacterModelOptions {
     enabled: boolean;
     gravity: THREE.Vector3;
   };
+  /** PMX が T ポーズの場合に A ポーズへ補正する。VMD は A ポーズ前提のため。 */
+  tPoseCorrection?: {
+    enabled: boolean;
+    /** 度数。デフォルト 35。左右で同じ値を使う。 */
+    armAngleDeg?: number;
+  };
 }
 
 export async function createCharacterModel(
@@ -52,6 +58,7 @@ export async function createCharacterModel(
       enabled: options.initialPhysics.enabled,
       gravity: options.initialPhysics.gravity,
     },
+    tPoseCorrection: options.tPoseCorrection,
   });
 }
 

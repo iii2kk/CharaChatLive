@@ -160,10 +160,14 @@ export default function Home() {
   }, [interactionMode]);
 
   const handlePresetSelected = useCallback(
-    (file: ModelFile) => {
+    (
+      file: ModelFile,
+      options?: { tPoseCorrection?: { enabled: boolean; armAngleDeg?: number } }
+    ) => {
       clearAnimationUrls();
       loadModelFromPath(file.path, {
         name: file.name,
+        tPoseCorrection: options?.tPoseCorrection,
         onLoaded: (modelId, modelKind) => {
           attachPresetMotions(modelId, modelKind);
         },

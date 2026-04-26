@@ -20,7 +20,9 @@ import type { InteractionMode } from "@/lib/interaction-mode";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { SceneLight } from "@/lib/scene-lights";
 
-import PresetModelsWindow from "@/components/windows/PresetModelsWindow";
+import PresetModelsWindow, {
+  type PresetLoadOptions,
+} from "@/components/windows/PresetModelsWindow";
 import PresetPropsWindow from "@/components/windows/PresetPropsWindow";
 import PresetTexturesWindow from "@/components/windows/PresetTexturesWindow";
 import FileUploadWindow from "@/components/windows/FileUploadWindow";
@@ -38,7 +40,7 @@ interface FloatingWindowOverlayProps {
   presetModels: ModelEntry[];
   presetObjects: ModelEntry[];
   texturePresets: TexturePresets;
-  onPresetSelected: (file: ModelFile) => void;
+  onPresetSelected: (file: ModelFile, options?: PresetLoadOptions) => void;
   onPresetPropSelected: (file: ModelFile) => void;
   sceneObjects: SceneObject[];
   activeSceneObjectId: string | null;

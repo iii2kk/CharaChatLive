@@ -13,6 +13,11 @@ import type { ViewerSettings } from "@/lib/viewer-settings";
 interface LoadModelOptions {
   name?: string;
   onLoaded?: (modelId: string, modelKind: ModelKind) => void;
+  /** PMX 専用。T ポーズモデルを A ポーズへ補正して VMD を再生する。 */
+  tPoseCorrection?: {
+    enabled: boolean;
+    armAngleDeg?: number;
+  };
 }
 
 function getErrorMessage(error: unknown): string {
@@ -121,6 +126,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
             physics.gravityZ
           ),
         },
+        tPoseCorrection: options?.tPoseCorrection,
       })
         .then(async (model) => {
           // PMX で物理が初期 ON の場合、helper を初期構築する
@@ -176,6 +182,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
             physics.gravityZ
           ),
         },
+        tPoseCorrection: options?.tPoseCorrection,
       })
         .then(async (model) => {
           if (model.physics.capability === "full" && model.physics.isEnabled()) {
