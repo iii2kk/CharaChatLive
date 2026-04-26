@@ -10,7 +10,7 @@ import type {
 const VOWEL_KEYS = ["aa", "ih", "ou", "ee", "oh"] as const;
 type VowelKey = (typeof VOWEL_KEYS)[number];
 
-const ATTACK_TAU = 0.04;
+const ATTACK_TAU = 0.010;
 const RELEASE_TAU = 0.12;
 const OVERRIDE_EPSILON = 0.05;
 
