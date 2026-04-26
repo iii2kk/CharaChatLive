@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
+import { AutoBlinkController } from "@/lib/character/autoBlinkController";
 import { AutoMotionController } from "@/lib/character/autoMotionController";
 import { MovementController } from "@/lib/character/movementController";
 import type { CharacterModel } from "@/lib/character/types";
@@ -23,12 +24,16 @@ export function useCharacterMovement(
   const autoControllersRef = useRef<Map<string, AutoMotionController>>(
     new Map()
   );
+  const blinkControllersRef = useRef<Map<string, AutoBlinkController>>(
+    new Map()
+  );
   const movementControllersRef = useRef<Map<string, MovementController>>(
     new Map()
   );
 
   useEffect(() => {
     const autoMap = autoControllersRef.current;
+    const blinkMap = blinkControllersRef.current;
     const moveMap = movementControllersRef.current;
     const currentIds = new Set(models.map((m) => m.id));
 
@@ -45,11 +50,20 @@ export function useCharacterMovement(
         autoMap.delete(id);
       }
     }
+    for (const [id, ctrl] of blinkMap) {
+      if (!currentIds.has(id)) {
+        ctrl.dispose();
+        blinkMap.delete(id);
+      }
+    }
 
     // Auto を先に作ってから Movement
     for (const model of models) {
       if (!autoMap.has(model.id)) {
         autoMap.set(model.id, new AutoMotionController(model));
+      }
+      if (!blinkMap.has(model.id)) {
+        blinkMap.set(model.id, new AutoBlinkController(model));
       }
       if (!moveMap.has(model.id)) {
         const auto = autoMap.get(model.id);
@@ -62,12 +76,15 @@ export function useCharacterMovement(
 
   useEffect(() => {
     const autoMap = autoControllersRef.current;
+    const blinkMap = blinkControllersRef.current;
     const moveMap = movementControllersRef.current;
     return () => {
       for (const ctrl of moveMap.values()) ctrl.dispose();
       moveMap.clear();
       for (const ctrl of autoMap.values()) ctrl.dispose();
       autoMap.clear();
+      for (const ctrl of blinkMap.values()) ctrl.dispose();
+      blinkMap.clear();
     };
   }, []);
 
