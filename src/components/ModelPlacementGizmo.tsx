@@ -3,12 +3,16 @@
 import { useEffect, useMemo, useRef, type RefObject } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import * as THREE from "three";
-import type { CharacterModel } from "@/hooks/useModelLoader";
 import {
   refreshModelInteractionMetrics,
   setModelWorldPosition,
   type ModelInteractionMetrics,
 } from "@/lib/character/modelTransform";
+
+export interface PlacementGizmoTarget {
+  id: string;
+  object: THREE.Object3D;
+}
 
 type PointerCaptureTarget = EventTarget & {
   setPointerCapture: (pointerId: number) => void;
@@ -35,8 +39,13 @@ type RotateDragState = {
 type DragState = MoveDragState | RotateDragState;
 
 interface ModelPlacementGizmoProps {
-  model: CharacterModel | null;
+  model: PlacementGizmoTarget | null;
   onDraggingChange?: (dragging: boolean) => void;
+  /**
+   * 選択中ターゲットの object.scale が変わった際にメトリクスを再計算するための
+   * 識別子。値が変わると refreshModelInteractionMetrics を再実行する。
+   */
+  scaleVersion?: number;
 }
 
 function getPointerCaptureTarget(
@@ -54,7 +63,7 @@ function intersectPlane(
 }
 
 function updateGizmoFromModel(
-  model: CharacterModel | null,
+  model: PlacementGizmoTarget | null,
   metrics: ModelInteractionMetrics | null,
   groupRef: RefObject<THREE.Group | null>,
   movePadRef: RefObject<THREE.Mesh | null>,
@@ -88,6 +97,7 @@ function updateGizmoFromModel(
 export default function ModelPlacementGizmo({
   model,
   onDraggingChange,
+  scaleVersion,
 }: ModelPlacementGizmoProps) {
   const modelObjectRef = useRef<THREE.Object3D | null>(null);
   const interactionMetricsRef = useRef<ModelInteractionMetrics | null>(null);
@@ -113,7 +123,7 @@ export default function ModelPlacementGizmo({
     interactionMetricsRef.current = model
       ? refreshModelInteractionMetrics(model.object)
       : null;
-  }, [model]);
+  }, [model, scaleVersion]);
 
   useEffect(() => {
     dragStateRef.current = null;

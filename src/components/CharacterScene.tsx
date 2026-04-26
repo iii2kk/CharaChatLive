@@ -19,9 +19,13 @@ import {
 } from "@/lib/character/modelTransform";
 import type { SceneLight } from "@/lib/scene-lights";
 import type { ViewerSettings } from "@/lib/viewer-settings";
+import type { SceneObject } from "@/types/sceneObjects";
 import FreeCameraControls from "./FreeCameraControls";
 import CharacterModels from "./CharacterModels";
-import ModelPlacementGizmo from "./ModelPlacementGizmo";
+import SceneObjects from "./SceneObjects";
+import ModelPlacementGizmo, {
+  type PlacementGizmoTarget,
+} from "./ModelPlacementGizmo";
 import SceneLights from "./SceneLights";
 import SceneEnvironment from "./SceneEnvironment";
 
@@ -38,6 +42,11 @@ interface CharacterSceneProps {
   interactionMode: InteractionMode;
   viewerSettings: ViewerSettings;
   getMovementController?: (modelId: string) => MovementController | null;
+  sceneObjects: SceneObject[];
+  activeSceneObjectId: string | null;
+  onActiveSceneObjectChange: (id: string) => void;
+  placementGizmoTarget: PlacementGizmoTarget | null;
+  sceneObjectScaleVersion: number;
 }
 
 const FLOOR_Y = 0;
@@ -120,12 +129,12 @@ function getPreferredFloorPoint(
 }
 
 function getFootprint(
-  model: CharacterModel,
+  target: { object: THREE.Object3D },
   metrics: ModelInteractionMetrics | null
 ): PlacementFootprint | null {
   if (!metrics) return null;
   return {
-    position: model.object.position.clone(),
+    position: target.object.position.clone(),
     radius: metrics.radius,
   };
 }
@@ -211,20 +220,26 @@ function findNonCollidingPosition(
   return bestPosition;
 }
 
-function placeNewModels(
-  newModels: CharacterModel[],
-  existingModels: CharacterModel[],
+interface PlaceableTarget {
+  object: THREE.Object3D;
+}
+
+function placeNewTargets(
+  newTargets: PlaceableTarget[],
+  existingTargets: PlaceableTarget[],
   camera: THREE.Camera,
   controlsTarget: THREE.Vector3 | null
 ): void {
-  const footprints: PlacementFootprint[] = existingModels
-    .map((model) => getFootprint(model, refreshModelInteractionMetrics(model.object)))
+  const footprints: PlacementFootprint[] = existingTargets
+    .map((target) =>
+      getFootprint(target, refreshModelInteractionMetrics(target.object))
+    )
     .filter((footprint): footprint is PlacementFootprint => footprint !== null);
   const preferredFloorPoint = getPreferredFloorPoint(camera, controlsTarget);
   const searchDirection = getHorizontalForward(camera, controlsTarget);
 
-  for (const model of newModels) {
-    const metrics = refreshModelInteractionMetrics(model.object);
+  for (const target of newTargets) {
+    const metrics = refreshModelInteractionMetrics(target.object);
     if (!metrics) {
       continue;
     }
@@ -239,11 +254,11 @@ function placeNewModels(
       searchDirection
     );
 
-    setModelWorldPosition(model.object, nextPosition);
-    model.object.updateMatrixWorld(true);
+    setModelWorldPosition(target.object, nextPosition);
+    target.object.updateMatrixWorld(true);
 
-    const placedMetrics = refreshModelInteractionMetrics(model.object);
-    const footprint = getFootprint(model, placedMetrics);
+    const placedMetrics = refreshModelInteractionMetrics(target.object);
+    const footprint = getFootprint(target, placedMetrics);
     if (footprint) {
       footprints.push(footprint);
     }
@@ -263,6 +278,11 @@ export default function CharacterScene({
   interactionMode,
   viewerSettings,
   getMovementController,
+  sceneObjects,
+  activeSceneObjectId,
+  onActiveSceneObjectChange,
+  placementGizmoTarget,
+  sceneObjectScaleVersion,
 }: CharacterSceneProps) {
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 10, 0), []);
   const {
@@ -395,9 +415,9 @@ export default function CharacterScene({
     if (newModels.length > 0 && camera instanceof THREE.PerspectiveCamera) {
       const newModelIds = new Set(newModels.map((model) => model.id));
       const existingModels = models.filter((model) => !newModelIds.has(model.id));
-      placeNewModels(
+      placeNewTargets(
         newModels,
-        existingModels,
+        [...existingModels, ...sceneObjects],
         camera,
         controlsRef.current?.target.clone() ?? defaultTarget
       );
@@ -405,7 +425,30 @@ export default function CharacterScene({
     }
 
     previousModelIdsRef.current = currentModelIds;
-  }, [camera, defaultTarget, invalidate, models]);
+  }, [camera, defaultTarget, invalidate, models, sceneObjects]);
+
+  const previousSceneObjectIdsRef = useRef<Set<string>>(
+    new Set(sceneObjects.map((o) => o.id))
+  );
+  useEffect(() => {
+    const previous = previousSceneObjectIdsRef.current;
+    const current = new Set(sceneObjects.map((o) => o.id));
+    const newOnes = sceneObjects.filter((o) => !previous.has(o.id));
+
+    if (newOnes.length > 0 && camera instanceof THREE.PerspectiveCamera) {
+      const newIds = new Set(newOnes.map((o) => o.id));
+      const existingObjects = sceneObjects.filter((o) => !newIds.has(o.id));
+      placeNewTargets(
+        newOnes,
+        [...models, ...existingObjects],
+        camera,
+        controlsRef.current?.target.clone() ?? defaultTarget
+      );
+      invalidate();
+    }
+
+    previousSceneObjectIdsRef.current = current;
+  }, [camera, defaultTarget, invalidate, models, sceneObjects]);
 
   useEffect(() => {
     if (
@@ -559,9 +602,17 @@ export default function CharacterScene({
         getMovementController={getMovementController}
       />
 
+      <SceneObjects
+        sceneObjects={sceneObjects}
+        activeSceneObjectId={activeSceneObjectId}
+        onActiveSceneObjectChange={onActiveSceneObjectChange}
+        selectionEnabled={interactionMode !== "freeCamera"}
+      />
+
       <ModelPlacementGizmo
-        model={interactionMode === "placement" ? activeModel : null}
+        model={interactionMode === "placement" ? placementGizmoTarget : null}
         onDraggingChange={setIsDraggingPlacementGizmo}
+        scaleVersion={sceneObjectScaleVersion}
       />
 
       <SceneLights

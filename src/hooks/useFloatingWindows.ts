@@ -13,6 +13,7 @@ const STORAGE_KEY = "chara-chat-live-floating-windows";
 export type WindowId =
   | "menu"
   | "presetModels"
+  | "presetProps"
   | "presetTextures"
   | "fileUpload"
   | "loadedModels"
@@ -27,6 +28,7 @@ export type WindowId =
 export const WINDOW_IDS: WindowId[] = [
   "menu",
   "presetModels",
+  "presetProps",
   "presetTextures",
   "fileUpload",
   "loadedModels",
@@ -42,6 +44,7 @@ export const WINDOW_IDS: WindowId[] = [
 export const WINDOW_LABELS: Record<WindowId, string> = {
   menu: "メニュー",
   presetModels: "プリセットモデル",
+  presetProps: "プロップ配置",
   presetTextures: "背景・地面",
   fileUpload: "ファイル読み込み",
   loadedModels: "読み込み済みモデル",
@@ -73,6 +76,7 @@ const DEFAULT_LAYER_CONFIG: FloatingWindowLayerConfig = {
 const DEFAULT_POSITIONS: Record<WindowId, { x: number; y: number }> = {
   menu: { x: 16, y: 16 },
   presetModels: { x: 16, y: 120 },
+  presetProps: { x: 16, y: 170 },
   presetTextures: { x: 16, y: 220 },
   fileUpload: { x: 16, y: 300 },
   loadedModels: { x: 16, y: 500 },
@@ -88,6 +92,7 @@ const DEFAULT_POSITIONS: Record<WindowId, { x: number; y: number }> = {
 const DEFAULT_VISIBLE: Record<WindowId, boolean> = {
   menu: true,
   presetModels: true,
+  presetProps: false,
   presetTextures: false,
   fileUpload: true,
   loadedModels: false,

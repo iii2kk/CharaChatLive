@@ -7,7 +7,9 @@ import type { ModelEntry, ModelFile } from "@/types/models";
 import type { PresetMotion } from "@/types/motions";
 import type { TexturePresets } from "@/types/textures";
 import { useModelLoader } from "@/hooks/useModelLoader";
+import { useSceneObjects } from "@/hooks/useSceneObjects";
 import { useCharacterMovement } from "@/hooks/useCharacterMovement";
+import type { PlacementGizmoTarget } from "@/components/ModelPlacementGizmo";
 import type { InteractionMode } from "@/lib/interaction-mode";
 import {
   defaultViewerSettings,
@@ -61,8 +63,21 @@ export default function Home() {
     setModelDisplayScale,
   } = useModelLoader(viewerSettings);
   const { getController: getMovementController } = useCharacterMovement(models);
+  const {
+    sceneObjects,
+    activeSceneObjectId,
+    setActiveSceneObjectId,
+    addSceneObjectFromPath,
+    removeSceneObject,
+    setSceneObjectScale,
+    scaleVersion: sceneObjectScaleVersion,
+  } = useSceneObjects();
+  const [lastSelectedKind, setLastSelectedKind] = useState<"model" | "prop">(
+    "model"
+  );
   const [animationUrlState, setAnimationUrlState] = useState<string[]>([]);
   const [presetModels, setPresetModels] = useState<ModelEntry[]>([]);
+  const [presetObjects, setPresetObjects] = useState<ModelEntry[]>([]);
   const [presetMotions, setPresetMotions] = useState<PresetMotion[]>([]);
   const [texturePresets, setTexturePresets] = useState<TexturePresets>({
     ground: [],
@@ -80,6 +95,10 @@ export default function Home() {
     fetch("/api/models")
       .then((res) => res.json())
       .then((data: ModelEntry[]) => setPresetModels(data))
+      .catch(() => {});
+    fetch("/api/objects")
+      .then((res) => res.json())
+      .then((data: ModelEntry[]) => setPresetObjects(data))
       .catch(() => {});
     fetch("/api/textures")
       .then((res) => res.json())
@@ -149,9 +168,47 @@ export default function Home() {
           attachPresetMotions(modelId, modelKind);
         },
       });
+      setLastSelectedKind("model");
     },
     [attachPresetMotions, clearAnimationUrls, loadModelFromPath]
   );
+
+  const handlePresetPropSelected = useCallback(
+    (file: ModelFile) => {
+      void addSceneObjectFromPath(file.path, file.name);
+      setLastSelectedKind("prop");
+    },
+    [addSceneObjectFromPath]
+  );
+
+  const handleActiveModelChange = useCallback(
+    (modelId: string) => {
+      setActiveModelId(modelId);
+      setLastSelectedKind("model");
+    },
+    [setActiveModelId]
+  );
+
+  const handleActiveSceneObjectChange = useCallback(
+    (id: string) => {
+      setActiveSceneObjectId(id);
+      setLastSelectedKind("prop");
+    },
+    [setActiveSceneObjectId]
+  );
+
+  const placementGizmoTarget: PlacementGizmoTarget | null = (() => {
+    if (lastSelectedKind === "prop") {
+      const obj = sceneObjects.find((o) => o.id === activeSceneObjectId);
+      if (obj) return { id: obj.id, object: obj.object };
+    }
+    if (activeModel) {
+      return { id: activeModel.id, object: activeModel.object };
+    }
+    const obj = sceneObjects.find((o) => o.id === activeSceneObjectId);
+    if (obj) return { id: obj.id, object: obj.object };
+    return null;
+  })();
 
   const handleModelFolderSelected = useCallback(
     (files: FileList) => {
@@ -222,6 +279,7 @@ export default function Home() {
 
   const handleFocusModel = useCallback((modelId: string) => {
     setActiveModelId(modelId);
+    setLastSelectedKind("model");
     setFocusRequest({
       modelId,
       nonce: performance.now(),
@@ -235,7 +293,7 @@ export default function Home() {
           models={models}
           activeModel={activeModel}
           activeModelId={activeModelId}
-          onActiveModelChange={setActiveModelId}
+          onActiveModelChange={handleActiveModelChange}
           focusRequest={focusRequest}
           lights={lights}
           activeLightId={activeLightId}
@@ -244,18 +302,31 @@ export default function Home() {
           interactionMode={interactionMode}
           viewerSettings={viewerSettings}
           getMovementController={getMovementController}
+          sceneObjects={sceneObjects}
+          activeSceneObjectId={activeSceneObjectId}
+          onActiveSceneObjectChange={handleActiveSceneObjectChange}
+          placementGizmoTarget={placementGizmoTarget}
+          sceneObjectScaleVersion={sceneObjectScaleVersion}
         />
       </div>
       <FloatingWindowOverlay
         presetModels={presetModels}
+        presetObjects={presetObjects}
         texturePresets={texturePresets}
         onPresetSelected={handlePresetSelected}
+        onPresetPropSelected={handlePresetPropSelected}
+        sceneObjects={sceneObjects}
+        activeSceneObjectId={activeSceneObjectId}
+        onActiveSceneObjectChange={handleActiveSceneObjectChange}
+        onRemoveSceneObject={removeSceneObject}
+        onSceneObjectScaleChange={setSceneObjectScale}
+        sceneObjectScaleVersion={sceneObjectScaleVersion}
         onModelFolderSelected={handleModelFolderSelected}
         onAnimationFilesSelected={handleAnimationFilesSelected}
         loadedModels={models}
         activeModel={activeModel}
         activeModelId={activeModelId}
-        onActiveModelChange={setActiveModelId}
+        onActiveModelChange={handleActiveModelChange}
         onFocusModel={handleFocusModel}
         onRemoveModel={removeModel}
         loading={loading}

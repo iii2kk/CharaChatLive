@@ -8,6 +8,8 @@ import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { MovementController } from "@/lib/character/movementController";
 import type { InteractionMode } from "@/lib/interaction-mode";
 import type { SceneLight } from "@/lib/scene-lights";
+import type { SceneObject } from "@/types/sceneObjects";
+import type { PlacementGizmoTarget } from "./ModelPlacementGizmo";
 import CharacterScene from "./CharacterScene";
 
 interface CharacterViewerProps {
@@ -23,6 +25,11 @@ interface CharacterViewerProps {
   interactionMode: InteractionMode;
   viewerSettings: ViewerSettings;
   getMovementController?: (modelId: string) => MovementController | null;
+  sceneObjects: SceneObject[];
+  activeSceneObjectId: string | null;
+  onActiveSceneObjectChange: (id: string) => void;
+  placementGizmoTarget: PlacementGizmoTarget | null;
+  sceneObjectScaleVersion: number;
 }
 
 const baseColors = new WeakMap<THREE.Material, THREE.Color>();
@@ -97,6 +104,11 @@ export default function CharacterViewer({
   interactionMode,
   viewerSettings,
   getMovementController,
+  sceneObjects,
+  activeSceneObjectId,
+  onActiveSceneObjectChange,
+  placementGizmoTarget,
+  sceneObjectScaleVersion,
 }: CharacterViewerProps) {
   return (
     <Canvas
@@ -119,6 +131,11 @@ export default function CharacterViewer({
           interactionMode={interactionMode}
           viewerSettings={viewerSettings}
           getMovementController={getMovementController}
+          sceneObjects={sceneObjects}
+          activeSceneObjectId={activeSceneObjectId}
+          onActiveSceneObjectChange={onActiveSceneObjectChange}
+          placementGizmoTarget={placementGizmoTarget}
+          sceneObjectScaleVersion={sceneObjectScaleVersion}
         />
       </Suspense>
     </Canvas>

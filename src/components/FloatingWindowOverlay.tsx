@@ -10,6 +10,10 @@ import {
 } from "@/hooks/useFloatingWindows";
 import type { ModelEntry, ModelFile } from "@/types/models";
 import type { TexturePresets } from "@/types/textures";
+import type {
+  SceneObject,
+  SceneObjectScaleInput,
+} from "@/types/sceneObjects";
 import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { MovementController } from "@/lib/character/movementController";
 import type { InteractionMode } from "@/lib/interaction-mode";
@@ -17,6 +21,7 @@ import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { SceneLight } from "@/lib/scene-lights";
 
 import PresetModelsWindow from "@/components/windows/PresetModelsWindow";
+import PresetPropsWindow from "@/components/windows/PresetPropsWindow";
 import PresetTexturesWindow from "@/components/windows/PresetTexturesWindow";
 import FileUploadWindow from "@/components/windows/FileUploadWindow";
 import LoadedModelsWindow from "@/components/windows/LoadedModelsWindow";
@@ -31,8 +36,16 @@ import MenuWindow from "@/components/windows/MenuWindow";
 
 interface FloatingWindowOverlayProps {
   presetModels: ModelEntry[];
+  presetObjects: ModelEntry[];
   texturePresets: TexturePresets;
   onPresetSelected: (file: ModelFile) => void;
+  onPresetPropSelected: (file: ModelFile) => void;
+  sceneObjects: SceneObject[];
+  activeSceneObjectId: string | null;
+  onActiveSceneObjectChange: (id: string) => void;
+  onRemoveSceneObject: (id: string) => void;
+  onSceneObjectScaleChange: (id: string, scale: SceneObjectScaleInput) => void;
+  sceneObjectScaleVersion: number;
   onModelFolderSelected: (files: FileList) => void;
   onAnimationFilesSelected: (files: FileList) => void;
   loadedModels: CharacterModel[];
@@ -65,8 +78,16 @@ const CONTENT_WINDOW_IDS = WINDOW_IDS.filter(
 
 export default function FloatingWindowOverlay({
   presetModels,
+  presetObjects,
   texturePresets,
   onPresetSelected,
+  onPresetPropSelected,
+  sceneObjects,
+  activeSceneObjectId,
+  onActiveSceneObjectChange,
+  onRemoveSceneObject,
+  onSceneObjectScaleChange,
+  sceneObjectScaleVersion,
   onModelFolderSelected,
   onAnimationFilesSelected,
   loadedModels,
@@ -144,6 +165,29 @@ export default function FloatingWindowOverlay({
           presetModels={presetModels}
           onPresetSelected={onPresetSelected}
           loading={loading}
+        />
+      </FloatingWindow>
+
+      {/* Preset Props */}
+      <FloatingWindow
+        title={WINDOW_LABELS.presetProps}
+        visible={windowStates.presetProps.visible}
+        zIndex={windowStates.presetProps.zIndex}
+        position={windowStates.presetProps.position}
+        onPositionChange={(pos) => setPosition("presetProps", pos)}
+        onFocus={() => bringToFront("presetProps")}
+        onClose={() => closeWindow("presetProps")}
+      >
+        <PresetPropsWindow
+          presetObjects={presetObjects}
+          onPresetSelected={onPresetPropSelected}
+          loading={loading}
+          sceneObjects={sceneObjects}
+          activeSceneObjectId={activeSceneObjectId}
+          onActiveSceneObjectChange={onActiveSceneObjectChange}
+          onRemoveSceneObject={onRemoveSceneObject}
+          onScaleChange={onSceneObjectScaleChange}
+          scaleVersion={sceneObjectScaleVersion}
         />
       </FloatingWindow>
 
