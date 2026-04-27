@@ -113,6 +113,9 @@ export class LipSyncController {
     }
     const ctx = getSharedAudioContext();
     this.renderer = createBinauralRenderer(ctx, { mode: this.spatialMode });
+    // renderer の output → destination 接続はここで一度だけ行う
+    // (audioSource ごとに connect/disconnect すると共有 renderer の接続が壊れる)
+    this.renderer.connect(ctx.destination);
     return this.renderer;
   }
 

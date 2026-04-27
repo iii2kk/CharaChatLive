@@ -90,8 +90,9 @@ export async function createAudioSourceFromUrl(
   const effect = options?.effect ?? null;
   if (options?.playToSpeaker !== false) {
     if (effect) {
+      // effect → destination の接続は呼び出し側 (LipSyncController) が
+      // 1 度だけ行い、ここでは触らない (共有 renderer を切断しないため)
       analyser.connect(effect.input);
-      effect.connect(ctx.destination);
     } else {
       analyser.connect(ctx.destination);
     }
@@ -119,13 +120,8 @@ export async function createAudioSourceFromUrl(
       } catch {
         /* noop */
       }
-      if (effect) {
-        try {
-          effect.disconnect();
-        } catch {
-          /* noop */
-        }
-      }
+      // effect (BinauralRenderer) はライフサイクルを LipSyncController が管理するため、
+      // ここでは disconnect しない (analyser.disconnect() で analyser→effect.input は既に切れる)
     },
   };
 }
@@ -148,8 +144,9 @@ export async function createAudioSourceFromStream(
   const effect = options?.effect ?? null;
   if (options?.playToSpeaker !== false) {
     if (effect) {
+      // effect → destination の接続は呼び出し側 (LipSyncController) が
+      // 1 度だけ行い、ここでは触らない (共有 renderer を切断しないため)
       analyser.connect(effect.input);
-      effect.connect(ctx.destination);
     } else {
       analyser.connect(ctx.destination);
     }
@@ -170,13 +167,8 @@ export async function createAudioSourceFromStream(
       } catch {
         /* noop */
       }
-      if (effect) {
-        try {
-          effect.disconnect();
-        } catch {
-          /* noop */
-        }
-      }
+      // effect (BinauralRenderer) はライフサイクルを LipSyncController が管理するため、
+      // ここでは disconnect しない (analyser.disconnect() で analyser→effect.input は既に切れる)
     },
   };
 }
