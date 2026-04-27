@@ -68,7 +68,10 @@ export default function Home() {
     getController: getLipSyncController,
     playAudio: playLipSyncAudio,
     stop: stopLipSyncAudio,
-  } = useLipSync(models);
+  } = useLipSync(models, {
+    spatialAudioEnabled: viewerSettings.spatialAudioEnabled,
+    spatialAudioMode: viewerSettings.spatialAudioMode,
+  });
   const {
     sceneObjects,
     activeSceneObjectId,

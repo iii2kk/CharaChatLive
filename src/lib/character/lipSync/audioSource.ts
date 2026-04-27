@@ -12,9 +12,25 @@ export interface AudioSourceHandle {
   dispose(): void;
 }
 
+/**
+ * AnalyserNode と destination の間に差し込むエフェクトノード。
+ * `BinauralRenderer` 互換の `input` を持ち、`connect(destination)` を実装していれば渡せる。
+ */
+export interface AudioEffect {
+  readonly input: AudioNode;
+  connect(destination: AudioNode): void;
+  disconnect(): void;
+}
+
 export interface AudioSourceOptions {
   /** スピーカー出力を有効にするか (既定: true) */
   playToSpeaker?: boolean;
+  /** AnalyserNode と destination の間に差し込むエフェクト (例: BinauralRenderer) */
+  effect?: AudioEffect | null;
+}
+
+export function getSharedAudioContext(): AudioContext {
+  return getAudioContext();
 }
 
 let sharedContext: AudioContext | null = null;
@@ -71,8 +87,14 @@ export async function createAudioSourceFromUrl(
   const sourceNode = ctx.createMediaElementSource(audio);
   const analyser = buildAnalyser(ctx);
   sourceNode.connect(analyser);
+  const effect = options?.effect ?? null;
   if (options?.playToSpeaker !== false) {
-    analyser.connect(ctx.destination);
+    if (effect) {
+      analyser.connect(effect.input);
+      effect.connect(ctx.destination);
+    } else {
+      analyser.connect(ctx.destination);
+    }
   }
 
   return {
@@ -97,6 +119,13 @@ export async function createAudioSourceFromUrl(
       } catch {
         /* noop */
       }
+      if (effect) {
+        try {
+          effect.disconnect();
+        } catch {
+          /* noop */
+        }
+      }
     },
   };
 }
@@ -116,8 +145,14 @@ export async function createAudioSourceFromStream(
   const sourceNode = ctx.createMediaStreamSource(stream);
   const analyser = buildAnalyser(ctx);
   sourceNode.connect(analyser);
+  const effect = options?.effect ?? null;
   if (options?.playToSpeaker !== false) {
-    analyser.connect(ctx.destination);
+    if (effect) {
+      analyser.connect(effect.input);
+      effect.connect(ctx.destination);
+    } else {
+      analyser.connect(ctx.destination);
+    }
   }
 
   return {
@@ -134,6 +169,13 @@ export async function createAudioSourceFromStream(
         analyser.disconnect();
       } catch {
         /* noop */
+      }
+      if (effect) {
+        try {
+          effect.disconnect();
+        } catch {
+          /* noop */
+        }
       }
     },
   };

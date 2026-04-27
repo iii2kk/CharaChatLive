@@ -9,9 +9,12 @@ import {
 import { LipSyncController } from "@/lib/character/lipSyncController";
 import type { CharacterModel } from "@/lib/character/types";
 import type { VowelDetectorFactory } from "@/lib/character/lipSync/types";
+import type { BinauralMode } from "@/lib/binaural";
 
 export interface UseLipSyncOptions {
   detectorFactory?: VowelDetectorFactory;
+  spatialAudioEnabled?: boolean;
+  spatialAudioMode?: BinauralMode;
 }
 
 export interface LipSyncApi {
@@ -46,6 +49,12 @@ export function useLipSync(
   const controllersRef = useRef<Map<string, LipSyncController>>(new Map());
   const detectorFactoryRef = useRef(options?.detectorFactory);
   detectorFactoryRef.current = options?.detectorFactory;
+  const spatialEnabled = options?.spatialAudioEnabled ?? false;
+  const spatialMode: BinauralMode = options?.spatialAudioMode ?? "builtin-hrtf";
+  const spatialEnabledRef = useRef(spatialEnabled);
+  const spatialModeRef = useRef(spatialMode);
+  spatialEnabledRef.current = spatialEnabled;
+  spatialModeRef.current = spatialMode;
 
   useEffect(() => {
     const map = controllersRef.current;
@@ -60,15 +69,23 @@ export function useLipSync(
 
     for (const model of models) {
       if (!map.has(model.id)) {
-        map.set(
-          model.id,
-          new LipSyncController(model, {
-            detectorFactory: detectorFactoryRef.current,
-          })
-        );
+        const ctrl = new LipSyncController(model, {
+          detectorFactory: detectorFactoryRef.current,
+        });
+        ctrl.setSpatial({
+          enabled: spatialEnabledRef.current,
+          mode: spatialModeRef.current,
+        });
+        map.set(model.id, ctrl);
       }
     }
   }, [models]);
+
+  useEffect(() => {
+    for (const ctrl of controllersRef.current.values()) {
+      ctrl.setSpatial({ enabled: spatialEnabled, mode: spatialMode });
+    }
+  }, [spatialEnabled, spatialMode]);
 
   useEffect(() => {
     const map = controllersRef.current;
@@ -100,7 +117,11 @@ export function useLipSync(
     ): Promise<HTMLAudioElement | null> => {
       const ctrl = controllersRef.current.get(modelId);
       if (!ctrl) return null;
-      const source = await createAudioSourceFromUrl(url, audioOptions);
+      const effect = ctrl.acquireSpatializer();
+      const source = await createAudioSourceFromUrl(url, {
+        ...audioOptions,
+        effect: audioOptions?.effect ?? effect,
+      });
       ctrl.attach(source);
       const audio = source.audio;
       if (audio) {
@@ -123,7 +144,11 @@ export function useLipSync(
     ): Promise<void> => {
       const ctrl = controllersRef.current.get(modelId);
       if (!ctrl) return;
-      const source = await createAudioSourceFromStream(stream, audioOptions);
+      const effect = ctrl.acquireSpatializer();
+      const source = await createAudioSourceFromStream(stream, {
+        ...audioOptions,
+        effect: audioOptions?.effect ?? effect,
+      });
       ctrl.attach(source);
     },
     []

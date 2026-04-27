@@ -19,6 +19,8 @@ type NumericViewerSettingKey = Exclude<
   | "backgroundTextureUrl"
   | "backgroundIsEquirect"
   | "backgroundColor"
+  | "spatialAudioEnabled"
+  | "spatialAudioMode"
 >;
 
 interface DisplaySettingsWindowProps {

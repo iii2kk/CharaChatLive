@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ScrollArea from "@/components/ScrollArea";
 import type { CharacterModel } from "@/hooks/useModelLoader";
+import type { ViewerSettings } from "@/lib/viewer-settings";
 
 interface SoundEntry {
   name: string;
@@ -17,12 +18,16 @@ interface LipSyncWindowProps {
     url: string
   ) => Promise<HTMLAudioElement | null>;
   onStop: (modelId: string) => void;
+  viewerSettings: ViewerSettings;
+  onViewerSettingsChange: React.Dispatch<React.SetStateAction<ViewerSettings>>;
 }
 
 export default function LipSyncWindow({
   activeModel,
   onPlayAudio,
   onStop,
+  viewerSettings,
+  onViewerSettingsChange,
 }: LipSyncWindowProps) {
   const [sounds, setSounds] = useState<SoundEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -101,6 +106,48 @@ export default function LipSyncWindow({
       {error ? (
         <p className="text-xs text-red-400">{error}</p>
       ) : null}
+
+      <div className="flex flex-col gap-1 rounded border border-gray-700 px-2 py-1.5 text-xs">
+        <label className="flex items-center gap-1.5 text-gray-200">
+          <input
+            type="checkbox"
+            checked={viewerSettings.spatialAudioEnabled}
+            onChange={(e) => {
+              const checked = e.currentTarget.checked;
+              onViewerSettingsChange((prev) => ({
+                ...prev,
+                spatialAudioEnabled: checked,
+              }));
+            }}
+          />
+          立体音響（カメラ位置を基準に左右へ振る・ヘッドホン推奨）
+        </label>
+        {viewerSettings.spatialAudioEnabled ? (
+          <label className="flex items-center gap-1.5 text-gray-400">
+            モード:
+            <select
+              value={viewerSettings.spatialAudioMode}
+              onChange={(e) => {
+                const mode = e.currentTarget.value as
+                  | "simple"
+                  | "builtin-hrtf";
+                onViewerSettingsChange((prev) => ({
+                  ...prev,
+                  spatialAudioMode: mode,
+                }));
+              }}
+              className="rounded bg-gray-800 px-1 py-0.5 text-gray-200"
+            >
+              <option value="builtin-hrtf">Built-in HRTF（高品質）</option>
+              <option value="simple">Simple（軽量）</option>
+            </select>
+          </label>
+        ) : null}
+        <p className="text-[10px] text-gray-500">
+          ON/OFF・モード変更は次回の再生から反映されます
+        </p>
+      </div>
+
 
       <div className="flex items-center gap-2">
         <button

@@ -25,6 +25,9 @@ export interface ViewerSettings {
   backgroundTextureUrl: string | null;
   backgroundIsEquirect: boolean;
   backgroundColor: string;
+  /** カメラ位置を基準にキャラクタの位置から音の方向を変える */
+  spatialAudioEnabled: boolean;
+  spatialAudioMode: "simple" | "builtin-hrtf";
 }
 
 export const defaultViewerSettings: ViewerSettings = {
@@ -51,4 +54,6 @@ export const defaultViewerSettings: ViewerSettings = {
   backgroundTextureUrl: null,
   backgroundIsEquirect: true,
   backgroundColor: "#1a1a2e",
+  spatialAudioEnabled: false,
+  spatialAudioMode: "builtin-hrtf",
 };

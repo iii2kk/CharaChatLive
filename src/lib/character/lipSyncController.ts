@@ -1,11 +1,23 @@
+import * as THREE from "three";
 import type { CharacterModel } from "./types";
 import type { AudioSourceHandle } from "./lipSync/audioSource";
+import { getSharedAudioContext } from "./lipSync/audioSource";
 import { createFormantBandVowelDetector } from "./lipSync/formantBandVowelDetector";
 import type {
   VowelDetector,
   VowelDetectorFactory,
   VowelWeights,
 } from "./lipSync/types";
+import { createBinauralRenderer } from "@/lib/binaural";
+import type { BinauralMode, BinauralRenderer } from "@/lib/binaural";
+
+/** Three.js 1 ユニット相当を Web Audio の何メートル分として扱うか */
+const WORLD_TO_AUDIO_SCALE = 0.1;
+
+export interface LipSyncListener {
+  position: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+}
 
 const VOWEL_KEYS = ["aa", "ih", "ou", "ee", "oh"] as const;
 type VowelKey = (typeof VOWEL_KEYS)[number];
@@ -50,6 +62,11 @@ export class LipSyncController {
   private enabled = true;
   private disposed = false;
   private mappingUnsubscribe: (() => void) | null = null;
+  private renderer: BinauralRenderer | null = null;
+  private spatialEnabled = false;
+  private spatialMode: BinauralMode = "builtin-hrtf";
+  private readonly tmpVec = new THREE.Vector3();
+  private readonly tmpQuat = new THREE.Quaternion();
   /** 直近の resolveName キャッシュ。mapping 更新時に invalidate される */
   private resolvedNames: Record<VowelKey, string | null> = {
     aa: null,
@@ -77,6 +94,26 @@ export class LipSyncController {
     this.detach();
     this.source = source;
     this.detector = this.detectorFactory(source.analyser, source.sampleRate);
+  }
+
+  /** 立体音響の設定を更新する。再生中の音声のチェーンには反映されない (次の play から有効)。 */
+  setSpatial(opts: { enabled: boolean; mode: BinauralMode }): void {
+    this.spatialEnabled = opts.enabled;
+    if (this.renderer && this.spatialMode !== opts.mode) {
+      this.renderer.setMode(opts.mode);
+    }
+    this.spatialMode = opts.mode;
+  }
+
+  /** 現在の設定で BinauralRenderer を取得 (無効なら null)。AudioSource 生成時に渡す。 */
+  acquireSpatializer(): BinauralRenderer | null {
+    if (!this.spatialEnabled) return null;
+    if (this.renderer) {
+      return this.renderer;
+    }
+    const ctx = getSharedAudioContext();
+    this.renderer = createBinauralRenderer(ctx, { mode: this.spatialMode });
+    return this.renderer;
   }
 
   /** 現在の AudioSource を切断し dispose する。 */
@@ -108,8 +145,14 @@ export class LipSyncController {
   }
 
   /** useFrame から毎フレーム呼ぶ。 */
-  update(delta: number): void {
-    if (this.disposed || !this.enabled) return;
+  update(delta: number, listener?: LipSyncListener): void {
+    if (this.disposed) return;
+
+    if (this.renderer && listener) {
+      this.updateSpatialPosition(listener);
+    }
+
+    if (!this.enabled) return;
     if (!this.detector) return;
 
     const weights: VowelWeights = this.detector.analyze();
@@ -155,6 +198,27 @@ export class LipSyncController {
       this.mappingUnsubscribe = null;
     }
     this.detach();
+    if (this.renderer) {
+      this.renderer.dispose();
+      this.renderer = null;
+    }
+  }
+
+  private updateSpatialPosition(listener: LipSyncListener): void {
+    if (!this.renderer) return;
+    // モデルのワールド座標
+    const world = this.model.object.getWorldPosition(this.tmpVec);
+    // カメラローカルへ
+    world.sub(listener.position);
+    this.tmpQuat.copy(listener.quaternion).invert();
+    world.applyQuaternion(this.tmpQuat);
+    // Three.js camera local: x=右, y=上, z=後 (カメラ前方は -z)
+    // BinauralRenderer Position3D: x=右, y=前, z=上
+    this.renderer.setPosition({
+      x: world.x * WORLD_TO_AUDIO_SCALE,
+      y: -world.z * WORLD_TO_AUDIO_SCALE,
+      z: world.y * WORLD_TO_AUDIO_SCALE,
+    });
   }
 
   private refreshMapping(): void {
