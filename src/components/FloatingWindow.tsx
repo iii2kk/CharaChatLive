@@ -1,19 +1,36 @@
 "use client";
 
-import { useCallback, useRef, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
 import ScrollArea from "@/components/ScrollArea";
+
+type WindowPosition = { x: number; y: number };
 
 interface FloatingWindowProps {
   title: string;
   children: ReactNode;
   visible: boolean;
   zIndex: number;
-  position: { x: number; y: number };
-  onPositionChange: (pos: { x: number; y: number }) => void;
+  position: WindowPosition;
+  onPositionChange: (pos: WindowPosition) => void;
   onFocus: () => void;
   onClose?: () => void;
   minimized?: boolean;
   onMinimizeToggle?: () => void;
+}
+
+function clampPosition(position: WindowPosition, element: HTMLElement): WindowPosition {
+  const rect = element.getBoundingClientRect();
+  const maxX = Math.max(0, window.innerWidth - rect.width);
+  const maxY = Math.max(0, window.innerHeight - rect.height);
+
+  return {
+    x: Math.max(0, Math.min(position.x, maxX)),
+    y: Math.max(0, Math.min(position.y, maxY)),
+  };
+}
+
+function isSamePosition(a: WindowPosition, b: WindowPosition) {
+  return a.x === b.x && a.y === b.y;
 }
 
 export default function FloatingWindow({
@@ -37,6 +54,37 @@ export default function FloatingWindow({
     originX: number;
     originY: number;
   } | null>(null);
+
+  const clampAndCommitPosition = useCallback(() => {
+    const element = windowRef.current;
+    if (!element) return;
+
+    const clamped = clampPosition(position, element);
+    element.style.left = `${clamped.x}px`;
+    element.style.top = `${clamped.y}px`;
+
+    if (!isSamePosition(position, clamped)) {
+      onPositionChange(clamped);
+    }
+  }, [onPositionChange, position]);
+
+  useLayoutEffect(() => {
+    if (!visible) return;
+
+    clampAndCommitPosition();
+
+    const element = windowRef.current;
+    if (!element) return;
+
+    const resizeObserver = new ResizeObserver(clampAndCommitPosition);
+    resizeObserver.observe(element);
+    window.addEventListener("resize", clampAndCommitPosition);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", clampAndCommitPosition);
+    };
+  }, [clampAndCommitPosition, visible]);
 
   const handleFocusPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -70,11 +118,13 @@ export default function FloatingWindow({
       if (!drag || !drag.active || e.pointerId !== drag.pointerId) return;
       const dx = e.clientX - drag.startX;
       const dy = e.clientY - drag.startY;
-      const newX = Math.max(0, Math.min(drag.originX + dx, window.innerWidth - 100));
-      const newY = Math.max(0, Math.min(drag.originY + dy, window.innerHeight - 32));
       if (windowRef.current) {
-        windowRef.current.style.left = `${newX}px`;
-        windowRef.current.style.top = `${newY}px`;
+        const next = clampPosition(
+          { x: drag.originX + dx, y: drag.originY + dy },
+          windowRef.current
+        );
+        windowRef.current.style.left = `${next.x}px`;
+        windowRef.current.style.top = `${next.y}px`;
       }
     },
     []
@@ -84,13 +134,16 @@ export default function FloatingWindow({
     (e: React.PointerEvent<HTMLDivElement>) => {
       const drag = dragRef.current;
       if (!drag || !drag.active || e.pointerId !== drag.pointerId) return;
-      e.currentTarget.releasePointerCapture(e.pointerId);
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
       const dx = e.clientX - drag.startX;
       const dy = e.clientY - drag.startY;
-      const newX = Math.max(0, Math.min(drag.originX + dx, window.innerWidth - 100));
-      const newY = Math.max(0, Math.min(drag.originY + dy, window.innerHeight - 32));
+      const next = windowRef.current
+        ? clampPosition({ x: drag.originX + dx, y: drag.originY + dy }, windowRef.current)
+        : { x: drag.originX + dx, y: drag.originY + dy };
       dragRef.current = null;
-      onPositionChange({ x: newX, y: newY });
+      onPositionChange(next);
     },
     [onPositionChange]
   );
@@ -101,7 +154,7 @@ export default function FloatingWindow({
     <div
       ref={windowRef}
       className="fixed pointer-events-auto bg-gray-900/95 border border-gray-700 rounded-lg shadow-xl backdrop-blur-sm text-gray-100"
-      style={{ left: position.x, top: position.y, zIndex }}
+      style={{ left: position.x, top: position.y, zIndex, maxWidth: "100vw" }}
       onPointerDownCapture={handleFocusPointerDown}
     >
       {/* Title bar */}
