@@ -1,5 +1,5 @@
 const FFT_SIZE = 1024;
-const SMOOTHING = 0.2;
+const SMOOTHING = 0.1;
 
 export interface AudioSourceHandle {
   /** AnalyserNode (VowelDetector に渡す) */

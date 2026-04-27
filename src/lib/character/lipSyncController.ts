@@ -10,8 +10,8 @@ import type {
 const VOWEL_KEYS = ["aa", "ih", "ou", "ee", "oh"] as const;
 type VowelKey = (typeof VOWEL_KEYS)[number];
 
-const ATTACK_TAU = 0.010;
-const RELEASE_TAU = 0.12;
+const ATTACK_TAU = 0.005;
+const RELEASE_TAU = 0.10;
 const OVERRIDE_EPSILON = 0.05;
 
 export interface LipSyncOptions {

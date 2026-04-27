@@ -14,7 +14,7 @@ const VOWEL_TEMPLATES: Record<"aa" | "ih" | "ou" | "ee" | "oh", [number, number,
 
 const SOFTMAX_TEMPERATURE = 8;
 const VOLUME_GATE = 0.02;
-const VOLUME_GAIN = 3.0;
+const VOLUME_GAIN = 4.0;
 
 /**
  * FFT 帯域のエネルギー比から母音 (aa/ih/ou/ee/oh) の重みを推定する。
