@@ -18,11 +18,13 @@ export interface BinauralRendererOptions {
 export interface BinauralRenderer {
   readonly input: AudioNode;
   readonly output: AudioNode;
+  readonly bypassed: boolean;
+  setBypass(enabled: boolean): void;
   setMode(mode: BinauralMode): void;
   setPosition(position: Position3D): void;
   setGain(value: number): void;
   connect(destination: AudioNode | AudioParam): void;
-  disconnect(): void;
+  disconnect(destination?: AudioNode | AudioParam): void;
   dispose(): void;
 }
 

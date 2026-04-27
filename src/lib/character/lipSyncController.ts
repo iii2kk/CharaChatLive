@@ -8,7 +8,10 @@ import type {
   VowelDetectorFactory,
   VowelWeights,
 } from "./lipSync/types";
-import { createBinauralRenderer } from "@/lib/binaural";
+import {
+  createBinauralRenderer,
+  positionFromThreeCameraLocal,
+} from "@/lib/binaural";
 import type { BinauralMode, BinauralRenderer } from "@/lib/binaural";
 
 /** Three.js 1 ユニット相当を Web Audio の何メートル分として扱うか */
@@ -96,26 +99,30 @@ export class LipSyncController {
     this.detector = this.detectorFactory(source.analyser, source.sampleRate);
   }
 
-  /** 立体音響の設定を更新する。再生中の音声のチェーンには反映されない (次の play から有効)。 */
+  /** 立体音響の設定を更新する。再生中でも setBypass / setMode により即時反映される。 */
   setSpatial(opts: { enabled: boolean; mode: BinauralMode }): void {
     this.spatialEnabled = opts.enabled;
-    if (this.renderer && this.spatialMode !== opts.mode) {
-      this.renderer.setMode(opts.mode);
-    }
     this.spatialMode = opts.mode;
+    if (this.renderer) {
+      this.renderer.setMode(opts.mode);
+      this.renderer.setBypass(!opts.enabled);
+    }
   }
 
-  /** 現在の設定で BinauralRenderer を取得 (無効なら null)。AudioSource 生成時に渡す。 */
-  acquireSpatializer(): BinauralRenderer | null {
-    if (!this.spatialEnabled) return null;
+  /**
+   * AudioSource 生成時に渡す BinauralRenderer を取得する。
+   * 無効時もチェーンには差しておき、`setBypass(true)` で素通しにすることで
+   * 再生中のライブ ON/OFF 切替を可能にする。
+   */
+  acquireSpatializer(): BinauralRenderer {
     if (this.renderer) {
       return this.renderer;
     }
     const ctx = getSharedAudioContext();
     this.renderer = createBinauralRenderer(ctx, { mode: this.spatialMode });
-    // renderer の output → destination 接続はここで一度だけ行う
-    // (audioSource ごとに connect/disconnect すると共有 renderer の接続が壊れる)
+    // 冪等な connect なので 1 回だけで OK。dispose まで維持される。
     this.renderer.connect(ctx.destination);
+    this.renderer.setBypass(!this.spatialEnabled);
     return this.renderer;
   }
 
@@ -151,7 +158,7 @@ export class LipSyncController {
   update(delta: number, listener?: LipSyncListener): void {
     if (this.disposed) return;
 
-    if (this.renderer && listener) {
+    if (this.renderer && this.spatialEnabled && listener) {
       this.updateSpatialPosition(listener);
     }
 
@@ -209,19 +216,13 @@ export class LipSyncController {
 
   private updateSpatialPosition(listener: LipSyncListener): void {
     if (!this.renderer) return;
-    // モデルのワールド座標
-    const world = this.model.object.getWorldPosition(this.tmpVec);
-    // カメラローカルへ
-    world.sub(listener.position);
+    // モデルのワールド座標 → カメラローカルへ
+    const local = this.model.object.getWorldPosition(this.tmpVec);
+    local.sub(listener.position);
     this.tmpQuat.copy(listener.quaternion).invert();
-    world.applyQuaternion(this.tmpQuat);
-    // Three.js camera local: x=右, y=上, z=後 (カメラ前方は -z)
-    // BinauralRenderer Position3D: x=右, y=前, z=上
-    this.renderer.setPosition({
-      x: world.x * WORLD_TO_AUDIO_SCALE,
-      y: -world.z * WORLD_TO_AUDIO_SCALE,
-      z: world.y * WORLD_TO_AUDIO_SCALE,
-    });
+    local.applyQuaternion(this.tmpQuat);
+    local.multiplyScalar(WORLD_TO_AUDIO_SCALE);
+    this.renderer.setPosition(positionFromThreeCameraLocal(local));
   }
 
   private refreshMapping(): void {

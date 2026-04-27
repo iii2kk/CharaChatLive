@@ -144,7 +144,7 @@ export default function LipSyncWindow({
           </label>
         ) : null}
         <p className="text-[10px] text-gray-500">
-          ON/OFF・モード変更は次回の再生から反映されます
+          再生中もリアルタイムに切り替えられます
         </p>
       </div>
 
