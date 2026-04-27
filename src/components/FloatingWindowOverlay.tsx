@@ -385,6 +385,8 @@ export default function FloatingWindowOverlay({
           activeModel={activeModel}
           onPlayAudio={onLipSyncPlay}
           onStop={onLipSyncStop}
+          viewerSettings={viewerSettings}
+          onViewerSettingsChange={onViewerSettingsChange}
         />
       </FloatingWindow>
     </div>

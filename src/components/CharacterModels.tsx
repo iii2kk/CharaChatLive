@@ -24,6 +24,9 @@ interface CharacterModelsProps {
 
 const SELECTION_HIGHLIGHT_DURATION_MS = 2000;
 
+const tmpListenerPos = new THREE.Vector3();
+const tmpListenerQuat = new THREE.Quaternion();
+
 export default function CharacterModels({
   models,
   activeModelId,
@@ -50,10 +53,14 @@ export default function CharacterModels({
     const deltaMs = delta * 1000;
     const frameId = ++frameIdRef.current;
 
+    camera.getWorldPosition(tmpListenerPos);
+    camera.getWorldQuaternion(tmpListenerQuat);
+    const listener = { position: tmpListenerPos, quaternion: tmpListenerQuat };
+
     for (const model of models) {
       model.update(delta);
       getMovementController?.(model.id)?.update(delta);
-      getLipSyncController?.(model.id)?.update(delta);
+      getLipSyncController?.(model.id)?.update(delta, listener);
     }
 
     const frameContext = {
