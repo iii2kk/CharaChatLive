@@ -36,10 +36,14 @@ interface MaterialSnapshot {
   material: MaterialLike;
   baseColor: THREE.Color;
   baseOpacity: number;
+  baseTransparent: boolean;
+  baseDepthWrite: boolean;
   baseEmissive: THREE.Color | null;
   baseOutlineColor: THREE.Color | null;
   baseOutlineAlpha: number;
 }
+
+const OPACITY_EPS = 1e-3;
 
 interface OutlineParameters {
   color?: THREE.Color | [number, number, number];
@@ -75,6 +79,8 @@ function snapshotMaterial(material: MaterialLike): MaterialSnapshot {
       ? material.color.clone()
       : new THREE.Color(1, 1, 1),
     baseOpacity: material.opacity ?? 1,
+    baseTransparent: material.transparent ?? false,
+    baseDepthWrite: material.depthWrite ?? true,
     baseEmissive: material.emissive ? material.emissive.clone() : null,
     baseOutlineColor,
     baseOutlineAlpha: outline?.alpha ?? 1,
@@ -175,8 +181,6 @@ export class PmxMaterialMorphController {
 
     for (const m of materialMorphs) collect(m);
     for (const g of groupMorphs) collect(g);
-
-    this.forceTransparentWhereNeeded(matArray);
   }
 
   private recordAffected(index: number, materialCount: number) {
@@ -184,27 +188,6 @@ export class PmxMaterialMorphController {
       for (let i = 0; i < materialCount; i++) this.affectedIndices.add(i);
     } else if (index >= 0) {
       this.affectedIndices.add(index);
-    }
-  }
-
-  private forceTransparentWhereNeeded(materials: MaterialLike[]) {
-    for (const morph of this.contributions.values()) {
-      for (const { element } of morph) {
-        const willReduceAlpha =
-          (element.type === 0 && element.diffuse[3] < 1) ||
-          (element.type === 1 && element.diffuse[3] < 0);
-        if (!willReduceAlpha) continue;
-        const targets =
-          element.index === -1 ? materials : [materials[element.index]];
-        for (const t of targets) {
-          if (!t) continue;
-          t.transparent = true;
-          // depthWrite=false is the safer default for typical PMX semi-transparent
-          // surfaces (windows, glass). PMX itself doesn't expose this flag, but
-          // mismatched depth writes cause obvious z-fighting on e.g. windows.
-          t.depthWrite = false;
-        }
-      }
     }
   }
 
@@ -343,6 +326,8 @@ export class PmxMaterialMorphController {
       if (!acc) {
         if (m.color) m.color.copy(snap.baseColor);
         if (m.opacity !== undefined) m.opacity = snap.baseOpacity;
+        m.transparent = snap.baseTransparent;
+        m.depthWrite = snap.baseDepthWrite;
         if (m.emissive && snap.baseEmissive) {
           m.emissive.copy(snap.baseEmissive);
         }
@@ -361,11 +346,24 @@ export class PmxMaterialMorphController {
         m.color.g = snap.baseColor.g * acc.mulColor.g + acc.addColor.g;
         m.color.b = snap.baseColor.b * acc.mulColor.b + acc.addColor.b;
       }
+      let finalOpacity = snap.baseOpacity;
       if (m.opacity !== undefined) {
-        m.opacity = Math.min(
+        finalOpacity = Math.min(
           1,
           Math.max(0, snap.baseOpacity * acc.mulOpacity + acc.addOpacity)
         );
+        m.opacity = finalOpacity;
+      }
+      // Toggle transparent/depthWrite only when the morph actually drives
+      // opacity below 1. Keeping transparent=true on opaque materials puts
+      // them in the transparent render queue and breaks depth ordering on
+      // characters that have material morphs but aren't currently using them.
+      if (finalOpacity < 1 - OPACITY_EPS) {
+        m.transparent = true;
+        m.depthWrite = false;
+      } else {
+        m.transparent = snap.baseTransparent;
+        m.depthWrite = snap.baseDepthWrite;
       }
       if (m.emissive && snap.baseEmissive) {
         m.emissive.r =
