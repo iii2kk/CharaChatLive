@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { MMDLoader } from "three/examples/jsm/loaders/MMDLoader";
 import { MMDAnimationHelper } from "three/examples/jsm/animation/MMDAnimationHelper";
+import { loadPmxMesh, type LoadedPmxMesh } from "@/lib/mmd/loadPmxMesh";
+import { PmxMaterialMorphController } from "@/lib/mmd/PmxMaterialMorphController";
 import { ensureAmmo } from "@/lib/ammo";
 import type { FileMap } from "@/lib/file-map";
 import { categorizeMmdMorph } from "./expressionCategory";
@@ -52,6 +54,10 @@ interface MmdConstructorOptions {
   fileMap: FileMap | null;
   initialPhysics: MmdPhysicsState;
   tPoseCorrection?: TPoseCorrectionOption;
+  pmxMorphData?: Pick<
+    LoadedPmxMesh,
+    "materialMorphs" | "groupMorphs" | "allMorphs"
+  >;
 }
 
 interface MmdPhysicsRuntime {
@@ -176,6 +182,7 @@ export class MmdCharacterModel implements CharacterModel {
 
   private mesh: THREE.SkinnedMesh;
   private fileMap: FileMap | null;
+  private materialMorphController: PmxMaterialMorphController | null = null;
   private helper: MMDAnimationHelper | null = null;
   private animationClip: THREE.AnimationClip | null = null;
   private physicsEnabled: boolean;
@@ -213,6 +220,15 @@ export class MmdCharacterModel implements CharacterModel {
       this.applyTPoseRestOffset();
     }
 
+    if (opts.pmxMorphData && opts.pmxMorphData.materialMorphs.length > 0) {
+      this.materialMorphController = new PmxMaterialMorphController(
+        this.mesh.material,
+        opts.pmxMorphData.materialMorphs,
+        opts.pmxMorphData.groupMorphs,
+        opts.pmxMorphData.allMorphs
+      );
+    }
+
     this.expressions = this.createExpressionController();
     this.expressionMapping = buildAutoMapping((name) =>
       this.expressions.has(name)
@@ -223,7 +239,7 @@ export class MmdCharacterModel implements CharacterModel {
     this.physics = this.createPhysicsController();
   }
 
-  static load(opts: {
+  static async load(opts: {
     id: string;
     name: string;
     url: string;
@@ -231,30 +247,19 @@ export class MmdCharacterModel implements CharacterModel {
     initialPhysics: MmdPhysicsState;
     tPoseCorrection?: TPoseCorrectionOption;
   }): Promise<MmdCharacterModel> {
-    return new Promise((resolve, reject) => {
-      const manager = buildLoadingManager(opts.fileMap);
-      const loader = new MMDLoader(manager);
-      loader.load(
-        opts.url,
-        (mesh) => {
-          mesh.castShadow = true;
-          mesh.receiveShadow = true;
-          resolve(
-            new MmdCharacterModel({
-              id: opts.id,
-              name: opts.name,
-              mesh,
-              fileMap: opts.fileMap,
-              initialPhysics: opts.initialPhysics,
-              tPoseCorrection: opts.tPoseCorrection,
-            })
-          );
-        },
-        undefined,
-        (err) => {
-          reject(err instanceof Error ? err : new Error(String(err)));
-        }
-      );
+    const manager = buildLoadingManager(opts.fileMap);
+    const loaded = await loadPmxMesh(opts.url, manager);
+    const { mesh, materialMorphs, groupMorphs, allMorphs } = loaded;
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return new MmdCharacterModel({
+      id: opts.id,
+      name: opts.name,
+      mesh,
+      fileMap: opts.fileMap,
+      initialPhysics: opts.initialPhysics,
+      tPoseCorrection: opts.tPoseCorrection,
+      pmxMorphData: { materialMorphs, groupMorphs, allMorphs },
     });
   }
 
@@ -284,6 +289,8 @@ export class MmdCharacterModel implements CharacterModel {
     this.motionEntries.clear();
     this.events.clear();
     this.mixerListenersBound = false;
+    this.materialMorphController?.dispose();
+    this.materialMorphController = null;
 
     this.mesh.geometry.dispose();
     const materials = Array.isArray(this.mesh.material)
@@ -409,6 +416,7 @@ export class MmdCharacterModel implements CharacterModel {
       return typeof idx === "number" ? idx : null;
     };
 
+    const materialController = this.materialMorphController;
     return {
       list: () => infos,
       has,
@@ -420,19 +428,24 @@ export class MmdCharacterModel implements CharacterModel {
       set: (name, weight) => {
         const idx = indexOf(name);
         if (idx === null) return;
-        influences[idx] = THREE.MathUtils.clamp(weight, 0, 1);
+        const clamped = THREE.MathUtils.clamp(weight, 0, 1);
+        influences[idx] = clamped;
+        materialController?.setWeight(name, clamped);
       },
       setMany: (values) => {
         for (const [name, weight] of Object.entries(values)) {
           const idx = indexOf(name);
           if (idx === null) continue;
-          influences[idx] = THREE.MathUtils.clamp(weight, 0, 1);
+          const clamped = THREE.MathUtils.clamp(weight, 0, 1);
+          influences[idx] = clamped;
+          materialController?.setWeight(name, clamped);
         }
       },
       reset: () => {
         for (let i = 0; i < influences.length; i++) {
           influences[i] = 0;
         }
+        materialController?.reset();
       },
     };
   }

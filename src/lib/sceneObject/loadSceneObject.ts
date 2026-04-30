@@ -1,10 +1,10 @@
 import * as THREE from "three";
 import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { MMDLoader } from "three/examples/jsm/loaders/MMDLoader";
 import { VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { VRM_TO_MMD_SCALE } from "@/lib/character/VrmCharacterModel";
 import type { SceneObject, SceneObjectKind } from "@/types/sceneObjects";
 import { createMorphController } from "./createMorphController";
+import { loadPmxMesh, type LoadedPmxMesh } from "@/lib/mmd/loadPmxMesh";
 
 interface VRMGLTF extends GLTF {
   userData: GLTF["userData"] & {
@@ -91,42 +91,41 @@ async function loadVrmAsObject(url: string): Promise<THREE.Object3D> {
   });
 }
 
-async function loadMmdAsObject(url: string): Promise<THREE.Object3D> {
-  return new Promise((resolve, reject) => {
-    const loader = new MMDLoader();
-    loader.load(
-      url,
-      (skinned) => {
-        // プロップはアニメーションしないため、SkinnedMesh ではなく通常 Mesh
-        // として扱う。ボーンが 0 個の PMX を SkinnedMesh のまま使うと
-        // skinning シェーダが `boneMatrices[0]` のような不正 GLSL になって
-        // 頂点シェーダのコンパイルに失敗するため。
-        const geometry = skinned.geometry;
+interface LoadedMmd {
+  object: THREE.Object3D;
+  pmx: LoadedPmxMesh;
+}
 
-        // MMDLoader は morph が 0 個でも `morphAttributes.position = []`
-        // (空配列) を必ずセットする。Three.js は `!== undefined` だけで
-        // USE_MORPHTARGETS を有効化するが、count が 0 のときは
-        // MORPHTARGETS_COUNT が定義されず、頂点シェーダ内の
-        // `for (i = 0; i < MORPHTARGETS_COUNT; …)` が未定義シンボルに
-        // なってコンパイル失敗する。空なら削除しておく。
-        if (
-          Array.isArray(geometry.morphAttributes.position) &&
-          geometry.morphAttributes.position.length === 0
-        ) {
-          delete geometry.morphAttributes.position;
-        }
+async function loadMmdAsObject(url: string): Promise<LoadedMmd> {
+  const loaded = await loadPmxMesh(url);
+  const skinned = loaded.mesh;
 
-        const mesh = new THREE.Mesh(geometry, skinned.material);
-        mesh.position.copy(skinned.position);
-        mesh.rotation.copy(skinned.rotation);
-        mesh.scale.copy(skinned.scale);
-        applyShadowFlags(mesh);
-        resolve(mesh);
-      },
-      undefined,
-      (err) => reject(err instanceof Error ? err : new Error(String(err)))
-    );
-  });
+  // プロップはアニメーションしないため、SkinnedMesh ではなく通常 Mesh
+  // として扱う。ボーンが 0 個の PMX を SkinnedMesh のまま使うと
+  // skinning シェーダが `boneMatrices[0]` のような不正 GLSL になって
+  // 頂点シェーダのコンパイルに失敗するため。
+  const geometry = skinned.geometry;
+
+  // MMDLoader は morph が 0 個でも `morphAttributes.position = []`
+  // (空配列) を必ずセットする。Three.js は `!== undefined` だけで
+  // USE_MORPHTARGETS を有効化するが、count が 0 のときは
+  // MORPHTARGETS_COUNT が定義されず、頂点シェーダ内の
+  // `for (i = 0; i < MORPHTARGETS_COUNT; …)` が未定義シンボルに
+  // なってコンパイル失敗する。空なら削除しておく。
+  if (
+    Array.isArray(geometry.morphAttributes.position) &&
+    geometry.morphAttributes.position.length === 0
+  ) {
+    delete geometry.morphAttributes.position;
+  }
+
+  const mesh = new THREE.Mesh(geometry, skinned.material);
+  mesh.position.copy(skinned.position);
+  mesh.rotation.copy(skinned.rotation);
+  mesh.scale.copy(skinned.scale);
+  applyShadowFlags(mesh);
+
+  return { object: mesh, pmx: loaded };
 }
 
 async function loadGltfAsObject(url: string): Promise<THREE.Object3D> {
@@ -153,17 +152,22 @@ export async function loadSceneObject(
     throw new Error("未対応のオブジェクト形式です");
   }
 
-  const object =
-    kind === "vrm"
-      ? await loadVrmAsObject(sourcePath)
-      : kind === "mmd"
-      ? await loadMmdAsObject(sourcePath)
-      : await loadGltfAsObject(sourcePath);
+  let object: THREE.Object3D;
+  let pmxData: LoadedPmxMesh | null = null;
+  if (kind === "vrm") {
+    object = await loadVrmAsObject(sourcePath);
+  } else if (kind === "mmd") {
+    const loaded = await loadMmdAsObject(sourcePath);
+    object = loaded.object;
+    pmxData = loaded.pmx;
+  } else {
+    object = await loadGltfAsObject(sourcePath);
+  }
 
   object.userData.sourcePath = sourcePath;
 
   const id = generateSceneObjectId();
-  const morphs = createMorphController(object);
+  const morphs = createMorphController(object, pmxData);
   let disposed = false;
 
   return {

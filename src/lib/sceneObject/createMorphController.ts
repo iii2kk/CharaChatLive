@@ -3,6 +3,8 @@ import type {
   SceneObjectMorphController,
   SceneObjectMorphInfo,
 } from "@/types/sceneObjects";
+import type { LoadedPmxMesh } from "@/lib/mmd/loadPmxMesh";
+import { PmxMaterialMorphController } from "@/lib/mmd/PmxMaterialMorphController";
 
 interface MorphTarget {
   mesh: THREE.Mesh | THREE.SkinnedMesh;
@@ -26,8 +28,25 @@ function hasMorphs(
   return Object.keys(dict).length > 0;
 }
 
-export function createMorphController(
+function findFirstMeshMaterial(
   root: THREE.Object3D
+): THREE.Material | THREE.Material[] | null {
+  let found: THREE.Material | THREE.Material[] | null = null;
+  root.traverse((child) => {
+    if (found) return;
+    if (
+      (child instanceof THREE.Mesh || child instanceof THREE.SkinnedMesh) &&
+      child.material
+    ) {
+      found = child.material;
+    }
+  });
+  return found;
+}
+
+export function createMorphController(
+  root: THREE.Object3D,
+  pmx?: LoadedPmxMesh | null
 ): SceneObjectMorphController | undefined {
   const targets = new Map<string, MorphTarget>();
   const collisions = new Map<string, number>();
@@ -42,7 +61,20 @@ export function createMorphController(
     }
   });
 
-  if (collected.length === 0) return undefined;
+  let materialController: PmxMaterialMorphController | null = null;
+  if (pmx && pmx.materialMorphs.length > 0) {
+    const material = findFirstMeshMaterial(root);
+    if (material) {
+      materialController = new PmxMaterialMorphController(
+        material,
+        pmx.materialMorphs,
+        pmx.groupMorphs,
+        pmx.allMorphs
+      );
+    }
+  }
+
+  if (collected.length === 0 && !materialController) return undefined;
 
   for (const t of collected) {
     const displayName =
@@ -65,15 +97,18 @@ export function createMorphController(
     },
     set: (name, weight) => {
       const t = targets.get(name);
-      if (!t || !t.mesh.morphTargetInfluences) return;
       const clamped = Math.min(1, Math.max(0, weight));
-      t.mesh.morphTargetInfluences[t.index] = clamped;
+      if (t && t.mesh.morphTargetInfluences) {
+        t.mesh.morphTargetInfluences[t.index] = clamped;
+      }
+      materialController?.setWeight(name, clamped);
     },
     reset: () => {
       for (const t of targets.values()) {
         if (!t.mesh.morphTargetInfluences) continue;
         t.mesh.morphTargetInfluences[t.index] = 0;
       }
+      materialController?.reset();
     },
   };
 }
