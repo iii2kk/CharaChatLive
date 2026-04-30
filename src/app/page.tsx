@@ -79,7 +79,10 @@ export default function Home() {
     addSceneObjectFromPath,
     removeSceneObject,
     setSceneObjectScale,
+    setSceneObjectMorph,
+    resetSceneObjectMorphs,
     scaleVersion: sceneObjectScaleVersion,
+    morphVersion: sceneObjectMorphVersion,
   } = useSceneObjects();
   const [lastSelectedKind, setLastSelectedKind] = useState<"model" | "prop">(
     "model"
@@ -335,6 +338,9 @@ export default function Home() {
         onRemoveSceneObject={removeSceneObject}
         onSceneObjectScaleChange={setSceneObjectScale}
         sceneObjectScaleVersion={sceneObjectScaleVersion}
+        onSceneObjectMorphChange={setSceneObjectMorph}
+        onSceneObjectMorphReset={resetSceneObjectMorphs}
+        sceneObjectMorphVersion={sceneObjectMorphVersion}
         onModelFolderSelected={handleModelFolderSelected}
         onAnimationFilesSelected={handleAnimationFilesSelected}
         loadedModels={models}

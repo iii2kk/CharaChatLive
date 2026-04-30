@@ -21,6 +21,8 @@ export function useSceneObjects() {
   // object.scale を直接読むだけだと React 再レンダーが起きないため、
   // スケール変更を反映するためのバージョン番号を保持する
   const [scaleVersion, setScaleVersion] = useState(0);
+  // morphTargetInfluences も同様 (mutate のみで再レンダーされない)
+  const [morphVersion, setMorphVersion] = useState(0);
 
   const sceneObjectsRef = useRef<SceneObject[]>([]);
 
@@ -89,6 +91,26 @@ export function useSceneObjects() {
     [findById]
   );
 
+  const setSceneObjectMorph = useCallback(
+    (id: string, morphName: string, weight: number) => {
+      const target = findById(id);
+      if (!target?.morphs) return;
+      target.morphs.set(morphName, weight);
+      setMorphVersion((v) => v + 1);
+    },
+    [findById]
+  );
+
+  const resetSceneObjectMorphs = useCallback(
+    (id: string) => {
+      const target = findById(id);
+      if (!target?.morphs) return;
+      target.morphs.reset();
+      setMorphVersion((v) => v + 1);
+    },
+    [findById]
+  );
+
   useEffect(
     () => () => {
       for (const obj of sceneObjectsRef.current) {
@@ -106,8 +128,11 @@ export function useSceneObjects() {
     addSceneObjectFromPath,
     removeSceneObject,
     setSceneObjectScale,
+    setSceneObjectMorph,
+    resetSceneObjectMorphs,
     loading,
     error,
     scaleVersion,
+    morphVersion,
   };
 }

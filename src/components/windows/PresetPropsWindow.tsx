@@ -15,6 +15,9 @@ interface PresetPropsWindowProps {
   onRemoveSceneObject: (id: string) => void;
   onScaleChange: (id: string, scale: SceneObjectScaleInput) => void;
   scaleVersion: number;
+  onMorphChange: (id: string, morphName: string, weight: number) => void;
+  onMorphReset: (id: string) => void;
+  morphVersion: number;
 }
 
 const SCALE_MIN = 0.1;
@@ -143,6 +146,105 @@ function ScalePanel({ obj, onScaleChange, scaleVersion }: ScalePanelProps) {
   );
 }
 
+interface MorphPanelProps {
+  obj: SceneObject;
+  morphVersion: number;
+  onMorphChange: (id: string, morphName: string, weight: number) => void;
+  onMorphReset: (id: string) => void;
+}
+
+function MorphPanel({
+  obj,
+  morphVersion,
+  onMorphChange,
+  onMorphReset,
+}: MorphPanelProps) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState("");
+
+  const morphs = obj.morphs;
+  const list = useMemo(() => {
+    if (!morphs) return [];
+    return morphs.list();
+  }, [morphs]);
+
+  const filtered = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((m) => m.name.toLowerCase().includes(q));
+  }, [list, filter]);
+
+  if (!morphs || list.length === 0) return null;
+
+  return (
+    <div className="mt-2 p-2 rounded bg-gray-900/60 border border-gray-700 flex flex-col gap-2">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 text-xs text-gray-300"
+      >
+        <span className="text-gray-400">{open ? "▼" : "▶"}</span>
+        <span>モーフ ({list.length})</span>
+      </button>
+      {open && (
+        <>
+          <input
+            type="text"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="フィルタ"
+            className="w-full px-1.5 py-0.5 text-xs bg-gray-800 border border-gray-700 rounded"
+          />
+          <ScrollArea className="flex max-h-[20vh] flex-col gap-1.5 overflow-y-auto pr-1">
+            {filtered.map((info) => {
+              void morphVersion;
+              const value = morphs.get(info.name);
+              return (
+                <div
+                  key={info.name}
+                  className="rounded bg-gray-800/40 px-2 py-1"
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="flex-1 truncate text-[11px] text-gray-200"
+                      title={info.name}
+                    >
+                      {info.name}
+                    </span>
+                    <span className="w-9 text-right text-[10px] text-gray-500">
+                      {value.toFixed(2)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={value}
+                    onChange={(e) =>
+                      onMorphChange(
+                        obj.id,
+                        info.name,
+                        Number(e.currentTarget.value)
+                      )
+                    }
+                    className="mt-0.5 w-full accent-emerald-400"
+                  />
+                </div>
+              );
+            })}
+          </ScrollArea>
+          <button
+            onClick={() => onMorphReset(obj.id)}
+            className="self-end px-2 py-0.5 text-xs rounded bg-gray-700 hover:bg-gray-600"
+          >
+            全てリセット
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function PresetPropsWindow({
   presetObjects,
   onPresetSelected,
@@ -153,6 +255,9 @@ export default function PresetPropsWindow({
   onRemoveSceneObject,
   onScaleChange,
   scaleVersion,
+  onMorphChange,
+  onMorphReset,
+  morphVersion,
 }: PresetPropsWindowProps) {
   const [openFolders, setOpenFolders] = useState<Set<string>>(new Set());
 
@@ -262,6 +367,12 @@ export default function PresetPropsWindow({
                       obj={activeObject}
                       onScaleChange={onScaleChange}
                       scaleVersion={scaleVersion}
+                    />
+                    <MorphPanel
+                      obj={activeObject}
+                      morphVersion={morphVersion}
+                      onMorphChange={onMorphChange}
+                      onMorphReset={onMorphReset}
                     />
                   </div>
                 )}

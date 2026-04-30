@@ -49,6 +49,13 @@ interface FloatingWindowOverlayProps {
   onRemoveSceneObject: (id: string) => void;
   onSceneObjectScaleChange: (id: string, scale: SceneObjectScaleInput) => void;
   sceneObjectScaleVersion: number;
+  onSceneObjectMorphChange: (
+    id: string,
+    morphName: string,
+    weight: number
+  ) => void;
+  onSceneObjectMorphReset: (id: string) => void;
+  sceneObjectMorphVersion: number;
   onModelFolderSelected: (files: FileList) => void;
   onAnimationFilesSelected: (files: FileList) => void;
   loadedModels: CharacterModel[];
@@ -96,6 +103,9 @@ export default function FloatingWindowOverlay({
   onRemoveSceneObject,
   onSceneObjectScaleChange,
   sceneObjectScaleVersion,
+  onSceneObjectMorphChange,
+  onSceneObjectMorphReset,
+  sceneObjectMorphVersion,
   onModelFolderSelected,
   onAnimationFilesSelected,
   loadedModels,
@@ -198,6 +208,9 @@ export default function FloatingWindowOverlay({
           onRemoveSceneObject={onRemoveSceneObject}
           onScaleChange={onSceneObjectScaleChange}
           scaleVersion={sceneObjectScaleVersion}
+          onMorphChange={onSceneObjectMorphChange}
+          onMorphReset={onSceneObjectMorphReset}
+          morphVersion={sceneObjectMorphVersion}
         />
       </FloatingWindow>
 

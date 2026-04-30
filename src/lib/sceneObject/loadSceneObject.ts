@@ -4,6 +4,7 @@ import { MMDLoader } from "three/examples/jsm/loaders/MMDLoader";
 import { VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { VRM_TO_MMD_SCALE } from "@/lib/character/VrmCharacterModel";
 import type { SceneObject, SceneObjectKind } from "@/types/sceneObjects";
+import { createMorphController } from "./createMorphController";
 
 interface VRMGLTF extends GLTF {
   userData: GLTF["userData"] & {
@@ -162,6 +163,7 @@ export async function loadSceneObject(
   object.userData.sourcePath = sourcePath;
 
   const id = generateSceneObjectId();
+  const morphs = createMorphController(object);
   let disposed = false;
 
   return {
@@ -170,6 +172,7 @@ export async function loadSceneObject(
     sourcePath,
     kind,
     object,
+    morphs,
     dispose: () => {
       if (disposed) return;
       disposed = true;
