@@ -18,6 +18,12 @@ export interface ViewerSettings {
   gravityX: number;
   gravityY: number;
   gravityZ: number;
+  /** MMD 物理: 揺らしもの剛体の位置減衰 (0..0.95)。PMX 値を上書き */
+  mmdPhysicsPositionDamping: number;
+  /** MMD 物理: 揺らしもの剛体の回転減衰 (0..0.95)。PMX 値を上書き */
+  mmdPhysicsRotationDamping: number;
+  /** MMD 物理: 自動スリープ。true で静止時の微振動を抑制 */
+  mmdPhysicsSleepEnabled: boolean;
   showGrid: boolean;
   groundTextureUrl: string | null;
   groundTextureRepeat: number;
@@ -47,6 +53,9 @@ export const defaultViewerSettings: ViewerSettings = {
   gravityX: 0,
   gravityY: -98,
   gravityZ: 0,
+  mmdPhysicsPositionDamping: 0.2,
+  mmdPhysicsRotationDamping: 0.3,
+  mmdPhysicsSleepEnabled: true,
   showGrid: true,
   groundTextureUrl: null,
   groundTextureRepeat: 10,

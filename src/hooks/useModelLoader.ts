@@ -58,6 +58,9 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
     gravityX: viewerSettings.gravityX,
     gravityY: viewerSettings.gravityY,
     gravityZ: viewerSettings.gravityZ,
+    mmdPhysicsPositionDamping: viewerSettings.mmdPhysicsPositionDamping,
+    mmdPhysicsRotationDamping: viewerSettings.mmdPhysicsRotationDamping,
+    mmdPhysicsSleepEnabled: viewerSettings.mmdPhysicsSleepEnabled,
   });
 
   const syncModels = useCallback(
@@ -125,6 +128,9 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
             physics.gravityY,
             physics.gravityZ
           ),
+          positionDamping: physics.mmdPhysicsPositionDamping,
+          rotationDamping: physics.mmdPhysicsRotationDamping,
+          sleepEnabled: physics.mmdPhysicsSleepEnabled,
         },
         tPoseCorrection: options?.tPoseCorrection,
       })
@@ -181,6 +187,9 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
             physics.gravityY,
             physics.gravityZ
           ),
+          positionDamping: physics.mmdPhysicsPositionDamping,
+          rotationDamping: physics.mmdPhysicsRotationDamping,
+          sleepEnabled: physics.mmdPhysicsSleepEnabled,
         },
         tPoseCorrection: options?.tPoseCorrection,
       })
@@ -351,6 +360,9 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
       gravityX: viewerSettings.gravityX,
       gravityY: viewerSettings.gravityY,
       gravityZ: viewerSettings.gravityZ,
+      mmdPhysicsPositionDamping: viewerSettings.mmdPhysicsPositionDamping,
+      mmdPhysicsRotationDamping: viewerSettings.mmdPhysicsRotationDamping,
+      mmdPhysicsSleepEnabled: viewerSettings.mmdPhysicsSleepEnabled,
     };
 
     const gravity = new THREE.Vector3(
@@ -375,6 +387,21 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
     viewerSettings.gravityZ,
     viewerSettings.physicsEnabled,
     syncModels,
+  ]);
+
+  // viewer settings -> MMD 物理 (damping / sleep) のリアルタイム同期
+  useEffect(() => {
+    for (const model of modelsRef.current) {
+      model.physics.setDamping?.(
+        viewerSettings.mmdPhysicsPositionDamping,
+        viewerSettings.mmdPhysicsRotationDamping
+      );
+      model.physics.setSleepEnabled?.(viewerSettings.mmdPhysicsSleepEnabled);
+    }
+  }, [
+    viewerSettings.mmdPhysicsPositionDamping,
+    viewerSettings.mmdPhysicsRotationDamping,
+    viewerSettings.mmdPhysicsSleepEnabled,
   ]);
 
   // unmount 時にモデルを破棄

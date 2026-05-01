@@ -217,6 +217,10 @@ export interface PhysicsController {
   isEnabled(): boolean;
   setEnabled(enabled: boolean): Promise<void>;
   setGravity(gravity: THREE.Vector3): void;
+  /** 揺らしもの剛体の damping を上書き。capability="full" のみ実装 */
+  setDamping?(positionDamping: number, rotationDamping: number): void;
+  /** 自動スリープの有効/無効。capability="full" のみ実装 */
+  setSleepEnabled?(enabled: boolean): void;
 }
 
 export interface CharacterFrameContext {

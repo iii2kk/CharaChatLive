@@ -21,6 +21,7 @@ type NumericViewerSettingKey = Exclude<
   | "backgroundColor"
   | "spatialAudioEnabled"
   | "spatialAudioMode"
+  | "mmdPhysicsSleepEnabled"
 >;
 
 interface DisplaySettingsWindowProps {
@@ -146,6 +147,29 @@ export default function DisplaySettingsWindow({
   ];
 
   const isLive2d = activeModel?.kind === "live2d";
+  const showMmdPhysicsTuning = physicsCapability === "full";
+  const mmdPhysicsControls: Array<{
+    key: NumericViewerSettingKey;
+    label: string;
+    min: number;
+    max: number;
+    step: number;
+  }> = [
+    {
+      key: "mmdPhysicsPositionDamping",
+      label: "揺れ抑制 (Position Damping)",
+      min: 0,
+      max: 0.95,
+      step: 0.01,
+    },
+    {
+      key: "mmdPhysicsRotationDamping",
+      label: "揺れ抑制 (Rotation Damping)",
+      min: 0,
+      max: 0.95,
+      step: 0.01,
+    },
+  ];
 
   return (
     <div>
@@ -212,6 +236,58 @@ export default function DisplaySettingsWindow({
             />
           </label>
         ))}
+
+        {/* MMD 専用: 揺らしもの剛体の damping / 自動スリープ */}
+        {showMmdPhysicsTuning && (
+          <>
+            <div className="mt-2 mb-1 text-xs text-gray-400 border-t border-gray-700 pt-3">
+              MMD 物理 — 揺らしもの調整
+            </div>
+            {mmdPhysicsControls.map((control) => (
+              <label key={control.key} className="flex flex-col gap-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-300">{control.label}</span>
+                  <span className="text-gray-500">
+                    {viewerSettings[control.key].toFixed(2)}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={control.min}
+                  max={control.max}
+                  step={control.step}
+                  value={viewerSettings[control.key]}
+                  disabled={gravityDisabled}
+                  onChange={(e) =>
+                    handleViewerSettingChange(
+                      control.key,
+                      Number(e.currentTarget.value)
+                    )
+                  }
+                  className="accent-blue-400 disabled:opacity-40"
+                />
+              </label>
+            ))}
+            <label className="flex items-center justify-between rounded bg-gray-800/50 px-3 py-2 text-sm">
+              <span className="text-gray-300">
+                自動スリープで微振動を抑える
+              </span>
+              <input
+                type="checkbox"
+                checked={viewerSettings.mmdPhysicsSleepEnabled}
+                disabled={gravityDisabled}
+                onChange={(e) => {
+                  const { checked } = e.currentTarget;
+                  onViewerSettingsChange((prev) => ({
+                    ...prev,
+                    mmdPhysicsSleepEnabled: checked,
+                  }));
+                }}
+                className="h-4 w-4 accent-blue-400 disabled:opacity-40"
+              />
+            </label>
+          </>
+        )}
 
         {/* Per-model Live2D settings */}
         {isLive2d && activeModel && (

@@ -14,6 +14,9 @@ export interface CreateCharacterModelOptions {
   initialPhysics: {
     enabled: boolean;
     gravity: THREE.Vector3;
+    positionDamping: number;
+    rotationDamping: number;
+    sleepEnabled: boolean;
   };
   /** PMX が T ポーズの場合に A ポーズへ補正する。VMD は A ポーズ前提のため。 */
   tPoseCorrection?: {
@@ -57,6 +60,9 @@ export async function createCharacterModel(
     initialPhysics: {
       enabled: options.initialPhysics.enabled,
       gravity: options.initialPhysics.gravity,
+      positionDamping: options.initialPhysics.positionDamping,
+      rotationDamping: options.initialPhysics.rotationDamping,
+      sleepEnabled: options.initialPhysics.sleepEnabled,
     },
     tPoseCorrection: options.tPoseCorrection,
   });

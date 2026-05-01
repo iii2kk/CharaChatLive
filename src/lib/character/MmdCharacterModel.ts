@@ -33,6 +33,9 @@ import { buildLoadingManager, revokeFileMapUrls } from "./urlModifier";
 interface MmdPhysicsState {
   enabled: boolean;
   gravity: THREE.Vector3;
+  positionDamping: number;
+  rotationDamping: number;
+  sleepEnabled: boolean;
 }
 
 interface TPoseCorrectionOption {
@@ -60,10 +63,23 @@ interface MmdConstructorOptions {
   >;
 }
 
+interface MmdRigidBodyEntry {
+  body: {
+    setDamping(linear: number, angular: number): void;
+    setSleepingThresholds(linear: number, angular: number): void;
+    setActivationState(state: number): void;
+    activate(forceActivation?: boolean): void;
+  };
+  params: {
+    type: number;
+  };
+}
+
 interface MmdPhysicsRuntime {
   setGravity(gravity: THREE.Vector3): void;
   reset?(): void;
   warmup?(cycles: number): void;
+  bodies?: MmdRigidBodyEntry[];
 }
 
 interface MmdHelperMeshState {
@@ -187,6 +203,9 @@ export class MmdCharacterModel implements CharacterModel {
   private animationClip: THREE.AnimationClip | null = null;
   private physicsEnabled: boolean;
   private gravity: THREE.Vector3;
+  private positionDamping: number;
+  private rotationDamping: number;
+  private sleepEnabled: boolean;
   private rebuildToken = 0;
 
   private motionEntries = new Map<string, MmdMotionEntry>();
@@ -208,6 +227,9 @@ export class MmdCharacterModel implements CharacterModel {
     this.fileMap = opts.fileMap;
     this.physicsEnabled = opts.initialPhysics.enabled;
     this.gravity = opts.initialPhysics.gravity.clone();
+    this.positionDamping = opts.initialPhysics.positionDamping;
+    this.rotationDamping = opts.initialPhysics.rotationDamping;
+    this.sleepEnabled = opts.initialPhysics.sleepEnabled;
     this.tPoseCorrection = opts.tPoseCorrection?.enabled
       ? {
           enabled: true,
@@ -353,6 +375,14 @@ export class MmdCharacterModel implements CharacterModel {
 
       this.helper = helper;
       this.mixerListenersBound = false;
+
+      if (this.physicsEnabled) {
+        const newPhysics = getPhysicsControllerFromHelper(helper, this.mesh);
+        if (newPhysics) {
+          this.applyBodyTuning(newPhysics);
+          newPhysics.warmup?.(60);
+        }
+      }
       return;
     }
 
@@ -360,8 +390,31 @@ export class MmdCharacterModel implements CharacterModel {
 
     const physics = getPhysicsControllerFromHelper(this.helper, this.mesh);
     if (physics && this.physicsEnabled) {
+      this.applyBodyTuning(physics);
       physics.reset?.();
       physics.warmup?.(60);
+    }
+  }
+
+  /**
+   * MMDPhysics の各 btRigidBody に damping / スリープ設定を当てる。
+   * type === 0 はキネマティック追従剛体 (mass=0) なのでスキップする。
+   * Ammo の活性状態定数: 1=ACTIVE_TAG (自動スリープ可), 4=DISABLE_DEACTIVATION
+   */
+  private applyBodyTuning(physics: MmdPhysicsRuntime): void {
+    const bodies = physics.bodies;
+    if (!bodies) return;
+    for (const rb of bodies) {
+      if (rb.params.type === 0) continue;
+      rb.body.setDamping(this.positionDamping, this.rotationDamping);
+      if (this.sleepEnabled) {
+        rb.body.setSleepingThresholds(0.05, 0.05);
+        rb.body.setActivationState(1);
+      } else {
+        rb.body.setSleepingThresholds(0, 0);
+        rb.body.setActivationState(4);
+      }
+      rb.body.activate(true);
     }
   }
 
@@ -830,6 +883,21 @@ export class MmdCharacterModel implements CharacterModel {
         const physics = getPhysicsControllerFromHelper(this.helper, this.mesh);
         if (physics) {
           physics.setGravity(this.gravity.clone());
+        }
+      },
+      setDamping: (positionDamping, rotationDamping) => {
+        this.positionDamping = positionDamping;
+        this.rotationDamping = rotationDamping;
+        const physics = getPhysicsControllerFromHelper(this.helper, this.mesh);
+        if (physics) {
+          this.applyBodyTuning(physics);
+        }
+      },
+      setSleepEnabled: (enabled) => {
+        this.sleepEnabled = enabled;
+        const physics = getPhysicsControllerFromHelper(this.helper, this.mesh);
+        if (physics) {
+          this.applyBodyTuning(physics);
         }
       },
     };
