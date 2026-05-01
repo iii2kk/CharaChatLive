@@ -6,6 +6,7 @@ import {
   type ViewerSettings,
 } from "@/lib/viewer-settings";
 import type { CharacterModel, PhysicsCapability } from "@/lib/character/types";
+import MmdPhysicsBodiesPanel from "./MmdPhysicsBodiesPanel";
 
 type NumericViewerSettingKey = Exclude<
   keyof ViewerSettings,
@@ -293,6 +294,7 @@ export default function DisplaySettingsWindow({
                 className="h-4 w-4 accent-blue-400 disabled:opacity-40"
               />
             </label>
+            <MmdPhysicsBodiesPanel activeModel={activeModel} />
           </>
         )}
 

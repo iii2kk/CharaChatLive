@@ -18,6 +18,8 @@ import type {
   CharacterModel,
   ExpressionController,
   ExpressionInfo,
+  MmdBodyInfo,
+  MmdBodyParams,
   MotionCapability,
   MotionHandle,
   MotionInfo,
@@ -67,20 +69,45 @@ interface MmdConstructorOptions {
   >;
 }
 
+interface AmmoVector3Like {
+  setValue?(x: number, y: number, z: number): void;
+}
+
+interface AmmoCollisionShapeLike {
+  calculateLocalInertia(mass: number, out: AmmoVector3Like): void;
+}
+
+interface AmmoRigidBodyLike {
+  setDamping(linear: number, angular: number): void;
+  setSleepingThresholds(linear: number, angular: number): void;
+  setActivationState(state: number): void;
+  activate(forceActivation?: boolean): void;
+  setFriction(value: number): void;
+  setRestitution(value: number): void;
+  setMassProps(mass: number, inertia: AmmoVector3Like): void;
+  updateInertiaTensor(): void;
+  getCollisionShape(): AmmoCollisionShapeLike;
+}
+
 interface MmdRigidBodyEntry {
-  body: {
-    setDamping(linear: number, angular: number): void;
-    setSleepingThresholds(linear: number, angular: number): void;
-    setActivationState(state: number): void;
-    activate(forceActivation?: boolean): void;
-  };
+  body: AmmoRigidBodyLike;
   params: {
     type: number;
+    name: string;
+    /** PMX 由来の質量 */
+    weight: number;
     /** PMX 由来の元値 (0..1) */
     positionDamping: number;
     /** PMX 由来の元値 (0..1) */
     rotationDamping: number;
+    friction: number;
+    restitution: number;
   };
+}
+
+interface AmmoModuleLike {
+  btVector3: new (x: number, y: number, z: number) => AmmoVector3Like;
+  destroy(obj: unknown): void;
 }
 
 interface MmdConstraintEntry {
@@ -229,6 +256,9 @@ export class MmdCharacterModel implements CharacterModel {
   private rotationDamping: number;
   private sleepEnabled: boolean;
   private jointSpringDamping: number;
+  /** 剛体ごとのパラメータ上書き (mass/friction/restitution)。
+   *  キーは physics.bodies のインデックス。値が undefined のフィールドは PMX 値を使う */
+  private bodyOverrides: Map<number, MmdBodyParams> = new Map();
   private rebuildToken = 0;
 
   private motionEntries = new Map<string, MmdMotionEntry>();
@@ -436,11 +466,16 @@ export class MmdCharacterModel implements CharacterModel {
   private applyBodyTuning(physics: MmdPhysicsRuntime): void {
     const bodies = physics.bodies;
     if (!bodies) return;
-    for (const rb of bodies) {
+    for (let i = 0; i < bodies.length; i++) {
+      const rb = bodies[i];
       if (rb.params.type === 0) continue;
+
+      // damping は PMX 値を尊重しつつ「下限を持ち上げる」
       const pos = Math.max(rb.params.positionDamping, this.positionDamping);
       const rot = Math.max(rb.params.rotationDamping, this.rotationDamping);
       rb.body.setDamping(pos, rot);
+
+      // sleep 設定
       if (this.sleepEnabled) {
         rb.body.setSleepingThresholds(0.05, 0.05);
         rb.body.setActivationState(1);
@@ -448,8 +483,30 @@ export class MmdCharacterModel implements CharacterModel {
         rb.body.setSleepingThresholds(0, 0);
         rb.body.setActivationState(4);
       }
+
+      // 個別オーバーライド (mass/friction/restitution)
+      const ov = this.bodyOverrides.get(i);
+      if (ov) {
+        if (ov.friction !== undefined) rb.body.setFriction(ov.friction);
+        if (ov.restitution !== undefined) rb.body.setRestitution(ov.restitution);
+        if (ov.mass !== undefined) {
+          this.applyMassToBody(rb, ov.mass);
+        }
+      }
+
       rb.body.activate(true);
     }
+  }
+
+  /** Bullet で質量を変えるには慣性テンソルの再計算が必須 */
+  private applyMassToBody(rb: MmdRigidBodyEntry, mass: number): void {
+    const Ammo = (window as unknown as { Ammo?: AmmoModuleLike }).Ammo;
+    if (!Ammo) return;
+    const inertia = new Ammo.btVector3(0, 0, 0);
+    rb.body.getCollisionShape().calculateLocalInertia(mass, inertia);
+    rb.body.setMassProps(mass, inertia);
+    rb.body.updateInertiaTensor();
+    Ammo.destroy(inertia);
   }
 
   /**
@@ -964,6 +1021,54 @@ export class MmdCharacterModel implements CharacterModel {
         if (physics) {
           this.applyJointTuning(physics);
         }
+      },
+      listBodies: (): MmdBodyInfo[] => {
+        const physics = getPhysicsControllerFromHelper(this.helper, this.mesh);
+        if (!physics?.bodies) return [];
+        const out: MmdBodyInfo[] = [];
+        for (let i = 0; i < physics.bodies.length; i++) {
+          const rb = physics.bodies[i];
+          const ov = this.bodyOverrides.get(i);
+          out.push({
+            id: i,
+            name: rb.params.name,
+            type: rb.params.type,
+            mass: ov?.mass ?? rb.params.weight,
+            friction: ov?.friction ?? rb.params.friction,
+            restitution: ov?.restitution ?? rb.params.restitution,
+          });
+        }
+        return out;
+      },
+      setBody: (id, params) => {
+        const cur = this.bodyOverrides.get(id) ?? {};
+        this.bodyOverrides.set(id, { ...cur, ...params });
+        const physics = getPhysicsControllerFromHelper(this.helper, this.mesh);
+        if (physics) {
+          this.applyBodyTuning(physics);
+        }
+      },
+      setAllBodies: (params) => {
+        const physics = getPhysicsControllerFromHelper(this.helper, this.mesh);
+        if (!physics?.bodies) return;
+        for (let i = 0; i < physics.bodies.length; i++) {
+          if (physics.bodies[i].params.type === 0) continue;
+          const cur = this.bodyOverrides.get(i) ?? {};
+          this.bodyOverrides.set(i, { ...cur, ...params });
+        }
+        this.applyBodyTuning(physics);
+      },
+      resetAllBodies: () => {
+        this.bodyOverrides.clear();
+        const physics = getPhysicsControllerFromHelper(this.helper, this.mesh);
+        if (!physics?.bodies) return;
+        for (const rb of physics.bodies) {
+          if (rb.params.type === 0) continue;
+          rb.body.setFriction(rb.params.friction);
+          rb.body.setRestitution(rb.params.restitution);
+          this.applyMassToBody(rb, rb.params.weight);
+        }
+        this.applyBodyTuning(physics);
       },
     };
   }

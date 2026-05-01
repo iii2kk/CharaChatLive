@@ -212,6 +212,20 @@ export interface AnimationController {
 
 export type PhysicsCapability = "full" | "spring-bone";
 
+/** MMD 剛体リスト UI 用。`type === 0` はキネマティック追従剛体 */
+export interface MmdBodyInfo {
+  /** 内部インデックス。setBody の引数に使う */
+  id: number;
+  name: string;
+  /** 0=キネマティック追従, 1=純物理, 2=物理(位置はボーン拘束) */
+  type: number;
+  mass: number;
+  friction: number;
+  restitution: number;
+}
+
+export type MmdBodyParams = Partial<Pick<MmdBodyInfo, "mass" | "friction" | "restitution">>;
+
 export interface PhysicsController {
   readonly capability: PhysicsCapability;
   isEnabled(): boolean;
@@ -223,6 +237,14 @@ export interface PhysicsController {
   setSleepEnabled?(enabled: boolean): void;
   /** ジョイント spring の減衰係数 (0..1)。capability="full" のみ実装 */
   setJointSpringDamping?(value: number): void;
+  /** 剛体一覧を返す。capability="full" のみ実装 */
+  listBodies?(): MmdBodyInfo[];
+  /** 個別剛体のパラメータを上書き */
+  setBody?(id: number, params: MmdBodyParams): void;
+  /** 揺らしもの剛体 (type !== 0) すべてに同じパラメータを適用 */
+  setAllBodies?(params: MmdBodyParams): void;
+  /** すべてのオーバーライドを破棄して PMX 値に戻す */
+  resetAllBodies?(): void;
 }
 
 export interface CharacterFrameContext {
