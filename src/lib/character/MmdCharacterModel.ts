@@ -87,6 +87,9 @@ interface AmmoRigidBodyLike {
   setMassProps(mass: number, inertia: AmmoVector3Like): void;
   updateInertiaTensor(): void;
   getCollisionShape(): AmmoCollisionShapeLike;
+  setLinearVelocity(v: AmmoVector3Like): void;
+  setAngularVelocity(v: AmmoVector3Like): void;
+  clearForces(): void;
 }
 
 interface MmdRigidBodyEntry {
@@ -1057,6 +1060,26 @@ export class MmdCharacterModel implements CharacterModel {
           this.bodyOverrides.set(i, { ...cur, ...params });
         }
         this.applyBodyTuning(physics);
+      },
+      resetBodyPositions: () => {
+        const physics = getPhysicsControllerFromHelper(this.helper, this.mesh);
+        if (!physics) return;
+        const Ammo = (window as unknown as { Ammo?: AmmoModuleLike }).Ammo;
+        if (Ammo && physics.bodies) {
+          // 速度・蓄積力もクリアしないと再リセット直後にまた暴れる
+          const zero = new Ammo.btVector3(0, 0, 0);
+          for (const rb of physics.bodies) {
+            if (rb.params.type === 0) continue;
+            rb.body.setLinearVelocity(zero);
+            rb.body.setAngularVelocity(zero);
+            rb.body.clearForces();
+          }
+          Ammo.destroy(zero);
+        }
+        // ボーン位置に剛体トランスフォームを戻す
+        physics.reset?.();
+        // 60 ステップ進めて拘束を解決し、揺れもの剛体を静定させる
+        physics.warmup?.(60);
       },
       resetAllBodies: () => {
         this.bodyOverrides.clear();

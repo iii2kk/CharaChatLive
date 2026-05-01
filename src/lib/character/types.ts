@@ -245,6 +245,8 @@ export interface PhysicsController {
   setAllBodies?(params: MmdBodyParams): void;
   /** すべてのオーバーライドを破棄して PMX 値に戻す */
   resetAllBodies?(): void;
+  /** すべての剛体の位置・速度をボーン位置に戻し、warmup で静定させる */
+  resetBodyPositions?(): void;
 }
 
 export interface CharacterFrameContext {

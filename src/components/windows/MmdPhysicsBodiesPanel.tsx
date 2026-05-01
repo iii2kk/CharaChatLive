@@ -38,6 +38,10 @@ export default function MmdPhysicsBodiesPanel({ activeModel }: Props) {
     refresh();
   };
 
+  const handleResetPositions = () => {
+    activeModel.physics.resetBodyPositions?.();
+  };
+
   const handleBodyChange = (id: number, params: MmdBodyParams) => {
     activeModel.physics.setBody?.(id, params);
     setBodies((prev) =>
@@ -47,8 +51,18 @@ export default function MmdPhysicsBodiesPanel({ activeModel }: Props) {
 
   return (
     <div className="flex flex-col gap-2 mt-3 border-t border-gray-700 pt-3">
-      <div className="text-xs text-gray-400">
-        MMD 剛体リスト ({bodies.length} 個 / type=0 のキネマティック追従剛体は除外)
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-gray-400">
+          MMD 剛体リスト ({bodies.length} 個 / type=0 のキネマティック追従剛体は除外)
+        </span>
+        <button
+          type="button"
+          onClick={handleResetPositions}
+          title="揺れもの剛体の位置・速度をボーン位置に戻し、60 ステップ warmup で静定させます。スカートのめくれ等のリカバリ用。"
+          className="text-[11px] px-2 py-1 rounded bg-blue-700/70 hover:bg-blue-600 text-white whitespace-nowrap"
+        >
+          剛体位置リセット
+        </button>
       </div>
 
       {/* 一括編集 */}
