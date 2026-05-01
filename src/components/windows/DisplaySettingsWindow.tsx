@@ -157,16 +157,23 @@ export default function DisplaySettingsWindow({
   }> = [
     {
       key: "mmdPhysicsPositionDamping",
-      label: "揺れ抑制 (Position Damping)",
+      label: "Position Damping 下限 (0=PMX 値尊重)",
       min: 0,
-      max: 0.95,
-      step: 0.01,
+      max: 0.999,
+      step: 0.005,
     },
     {
       key: "mmdPhysicsRotationDamping",
-      label: "揺れ抑制 (Rotation Damping)",
+      label: "Rotation Damping 下限 (0=PMX 値尊重)",
       min: 0,
-      max: 0.95,
+      max: 0.999,
+      step: 0.005,
+    },
+    {
+      key: "mmdPhysicsJointSpringDamping",
+      label: "ジョイント Spring 減衰 (本命の振動対策)",
+      min: 0,
+      max: 1,
       step: 0.01,
     },
   ];

@@ -33,9 +33,13 @@ import { buildLoadingManager, revokeFileMapUrls } from "./urlModifier";
 interface MmdPhysicsState {
   enabled: boolean;
   gravity: THREE.Vector3;
+  /** 位置減衰の下限。PMX 値がこれ未満なら持ち上げる */
   positionDamping: number;
+  /** 回転減衰の下限。PMX 値がこれ未満なら持ち上げる */
   rotationDamping: number;
   sleepEnabled: boolean;
+  /** ジョイント spring の減衰 (0..1)。0 で MMDPhysics 既定挙動 (減衰なし) */
+  jointSpringDamping: number;
 }
 
 interface TPoseCorrectionOption {
@@ -72,6 +76,23 @@ interface MmdRigidBodyEntry {
   };
   params: {
     type: number;
+    /** PMX 由来の元値 (0..1) */
+    positionDamping: number;
+    /** PMX 由来の元値 (0..1) */
+    rotationDamping: number;
+  };
+}
+
+interface MmdConstraintEntry {
+  constraint: {
+    /** axis: 0..5 (0-2=平行移動, 3-5=回転) */
+    setDamping(axis: number, value: number): void;
+    enableSpring(axis: number, enabled: boolean): void;
+  };
+  params: {
+    /** 各軸の spring stiffness (0=spring 無効) */
+    springPosition: number[];
+    springRotation: number[];
   };
 }
 
@@ -80,6 +101,7 @@ interface MmdPhysicsRuntime {
   reset?(): void;
   warmup?(cycles: number): void;
   bodies?: MmdRigidBodyEntry[];
+  constraints?: MmdConstraintEntry[];
 }
 
 interface MmdHelperMeshState {
@@ -206,6 +228,7 @@ export class MmdCharacterModel implements CharacterModel {
   private positionDamping: number;
   private rotationDamping: number;
   private sleepEnabled: boolean;
+  private jointSpringDamping: number;
   private rebuildToken = 0;
 
   private motionEntries = new Map<string, MmdMotionEntry>();
@@ -230,6 +253,7 @@ export class MmdCharacterModel implements CharacterModel {
     this.positionDamping = opts.initialPhysics.positionDamping;
     this.rotationDamping = opts.initialPhysics.rotationDamping;
     this.sleepEnabled = opts.initialPhysics.sleepEnabled;
+    this.jointSpringDamping = opts.initialPhysics.jointSpringDamping;
     this.tPoseCorrection = opts.tPoseCorrection?.enabled
       ? {
           enabled: true,
@@ -380,6 +404,7 @@ export class MmdCharacterModel implements CharacterModel {
         const newPhysics = getPhysicsControllerFromHelper(helper, this.mesh);
         if (newPhysics) {
           this.applyBodyTuning(newPhysics);
+          this.applyJointTuning(newPhysics);
           newPhysics.warmup?.(60);
         }
       }
@@ -391,6 +416,7 @@ export class MmdCharacterModel implements CharacterModel {
     const physics = getPhysicsControllerFromHelper(this.helper, this.mesh);
     if (physics && this.physicsEnabled) {
       this.applyBodyTuning(physics);
+      this.applyJointTuning(physics);
       physics.reset?.();
       physics.warmup?.(60);
     }
@@ -399,6 +425,12 @@ export class MmdCharacterModel implements CharacterModel {
   /**
    * MMDPhysics の各 btRigidBody に damping / スリープ設定を当てる。
    * type === 0 はキネマティック追従剛体 (mass=0) なのでスキップする。
+   *
+   * damping は PMX 値を上書きせず「下限を持ち上げる (lift)」セマンティクス:
+   * `Math.max(pmxValue, sliderValue)` を当てる。スライダーを 0 に置けば PMX
+   * の元値がそのまま尊重される。これは PMX 作者が高 damping で釣り合わせた
+   * モデル (例: 質量 0.01kg + damping 0.999) を破壊しないため。
+   *
    * Ammo の活性状態定数: 1=ACTIVE_TAG (自動スリープ可), 4=DISABLE_DEACTIVATION
    */
   private applyBodyTuning(physics: MmdPhysicsRuntime): void {
@@ -406,7 +438,9 @@ export class MmdCharacterModel implements CharacterModel {
     if (!bodies) return;
     for (const rb of bodies) {
       if (rb.params.type === 0) continue;
-      rb.body.setDamping(this.positionDamping, this.rotationDamping);
+      const pos = Math.max(rb.params.positionDamping, this.positionDamping);
+      const rot = Math.max(rb.params.rotationDamping, this.rotationDamping);
+      rb.body.setDamping(pos, rot);
       if (this.sleepEnabled) {
         rb.body.setSleepingThresholds(0.05, 0.05);
         rb.body.setActivationState(1);
@@ -415,6 +449,30 @@ export class MmdCharacterModel implements CharacterModel {
         rb.body.setActivationState(4);
       }
       rb.body.activate(true);
+    }
+  }
+
+  /**
+   * MMDPhysics は constraint の spring stiffness は設定するが damping を
+   * 設定しないため、強剛性 + 軽質量モデルで振動が収束しない。Bullet の
+   * btGeneric6DofSpringConstraint.setDamping(axisIdx, value) で各 spring 軸に
+   * 減衰を入れる。0=減衰なし(既定)、典型値 0.3〜0.7。
+   */
+  private applyJointTuning(physics: MmdPhysicsRuntime): void {
+    const constraints = physics.constraints;
+    if (!constraints) return;
+    const damping = this.jointSpringDamping;
+    for (const c of constraints) {
+      for (let i = 0; i < 3; i++) {
+        if (c.params.springPosition[i] !== 0) {
+          c.constraint.setDamping(i, damping);
+        }
+      }
+      for (let i = 0; i < 3; i++) {
+        if (c.params.springRotation[i] !== 0) {
+          c.constraint.setDamping(i + 3, damping);
+        }
+      }
     }
   }
 
@@ -898,6 +956,13 @@ export class MmdCharacterModel implements CharacterModel {
         const physics = getPhysicsControllerFromHelper(this.helper, this.mesh);
         if (physics) {
           this.applyBodyTuning(physics);
+        }
+      },
+      setJointSpringDamping: (value) => {
+        this.jointSpringDamping = value;
+        const physics = getPhysicsControllerFromHelper(this.helper, this.mesh);
+        if (physics) {
+          this.applyJointTuning(physics);
         }
       },
     };

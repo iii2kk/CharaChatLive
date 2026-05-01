@@ -221,6 +221,8 @@ export interface PhysicsController {
   setDamping?(positionDamping: number, rotationDamping: number): void;
   /** 自動スリープの有効/無効。capability="full" のみ実装 */
   setSleepEnabled?(enabled: boolean): void;
+  /** ジョイント spring の減衰係数 (0..1)。capability="full" のみ実装 */
+  setJointSpringDamping?(value: number): void;
 }
 
 export interface CharacterFrameContext {

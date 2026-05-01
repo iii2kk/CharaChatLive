@@ -17,6 +17,7 @@ export interface CreateCharacterModelOptions {
     positionDamping: number;
     rotationDamping: number;
     sleepEnabled: boolean;
+    jointSpringDamping: number;
   };
   /** PMX が T ポーズの場合に A ポーズへ補正する。VMD は A ポーズ前提のため。 */
   tPoseCorrection?: {
@@ -63,6 +64,7 @@ export async function createCharacterModel(
       positionDamping: options.initialPhysics.positionDamping,
       rotationDamping: options.initialPhysics.rotationDamping,
       sleepEnabled: options.initialPhysics.sleepEnabled,
+      jointSpringDamping: options.initialPhysics.jointSpringDamping,
     },
     tPoseCorrection: options.tPoseCorrection,
   });
