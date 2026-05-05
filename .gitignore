@@ -43,8 +43,6 @@ public/models/
 .claude/
 public/motions/
 plan/
-/vendor/*
-!/src/vendor/**
 public/textures/backgrounds/
 public/textures/ground/
 logs/
@@ -53,3 +51,5 @@ snapshot/
 public/objects/
 tools/__pycache__/
 public/sounds/
+vendor_archive/
+src/vendor/

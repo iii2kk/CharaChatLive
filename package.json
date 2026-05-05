@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "build:vendor": "tsc -p tsconfig.vendor.json",
+    "dev": "npm run build:vendor && next dev",
+    "build": "npm run build:vendor && next build",
     "start": "next start",
     "lint": "eslint"
   },

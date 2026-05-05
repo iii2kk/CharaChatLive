@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "strict": false,
+    "noEmitOnError": false,
+    "declaration": true,
+    "declarationMap": false,
+    "sourceMap": false,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "rootDir": "vendor/cubism-framework",
+    "outDir": "src/vendor/cubism-framework"
+  },
+  "include": [
+    "src/types/live2dcubismcore.d.ts",
+    "vendor/cubism-framework/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}
