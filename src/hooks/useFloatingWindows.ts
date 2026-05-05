@@ -24,7 +24,9 @@ export type WindowId =
   | "expressionControl"
   | "motionControl"
   | "movementControl"
-  | "lipSync";
+  | "lipSync"
+  | "chatLog"
+  | "speechBubbleDebug";
 
 export const WINDOW_IDS: WindowId[] = [
   "menu",
@@ -41,6 +43,8 @@ export const WINDOW_IDS: WindowId[] = [
   "motionControl",
   "movementControl",
   "lipSync",
+  "chatLog",
+  "speechBubbleDebug",
 ];
 
 export const WINDOW_LABELS: Record<WindowId, string> = {
@@ -58,6 +62,8 @@ export const WINDOW_LABELS: Record<WindowId, string> = {
   motionControl: "モーションコントロール",
   movementControl: "移動コントロール",
   lipSync: "リップシンク",
+  chatLog: "チャットログ",
+  speechBubbleDebug: "吹き出しデバッグ",
 };
 
 interface WindowState {
@@ -91,6 +97,8 @@ const DEFAULT_POSITIONS: Record<WindowId, { x: number; y: number }> = {
   motionControl: { x: 980, y: 16 },
   movementControl: { x: 980, y: 500 },
   lipSync: { x: 660, y: 260 },
+  chatLog: { x: 16, y: 650 },
+  speechBubbleDebug: { x: 340, y: 650 },
 };
 
 const DEFAULT_VISIBLE: Record<WindowId, boolean> = {
@@ -108,6 +116,8 @@ const DEFAULT_VISIBLE: Record<WindowId, boolean> = {
   motionControl: false,
   movementControl: false,
   lipSync: false,
+  chatLog: true,
+  speechBubbleDebug: false,
 };
 
 function buildDefaultStates(config: FloatingWindowLayerConfig): Record<WindowId, WindowState> {

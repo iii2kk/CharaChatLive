@@ -19,6 +19,7 @@ import type { MovementController } from "@/lib/character/movementController";
 import type { InteractionMode } from "@/lib/interaction-mode";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { SceneLight } from "@/lib/scene-lights";
+import type { ChatMessage } from "@/types/chat";
 
 import PresetModelsWindow, {
   type PresetLoadOptions,
@@ -35,6 +36,8 @@ import ExpressionControlWindow from "@/components/windows/ExpressionControlWindo
 import MotionControlWindow from "@/components/windows/MotionControlWindow";
 import MovementControlWindow from "@/components/windows/MovementControlWindow";
 import LipSyncWindow from "@/components/windows/LipSyncWindow";
+import ChatLogWindow from "@/components/windows/ChatLogWindow";
+import SpeechBubbleDebugWindow from "@/components/windows/SpeechBubbleDebugWindow";
 import MenuWindow from "@/components/windows/MenuWindow";
 
 interface FloatingWindowOverlayProps {
@@ -84,6 +87,13 @@ interface FloatingWindowOverlayProps {
     url: string
   ) => Promise<HTMLAudioElement | null>;
   onLipSyncStop: (modelId: string) => void;
+  chatMessages: ChatMessage[];
+  onSpeechBubbleDebugShow: (
+    modelId: string,
+    text: string,
+    durationMs: number
+  ) => void;
+  onSpeechBubbleDebugClear: (modelId: string | null) => void;
 }
 
 /** Content window IDs (all except menu) */
@@ -131,6 +141,9 @@ export default function FloatingWindowOverlay({
   getMovementController,
   onLipSyncPlay,
   onLipSyncStop,
+  chatMessages,
+  onSpeechBubbleDebugShow,
+  onSpeechBubbleDebugClear,
 }: FloatingWindowOverlayProps) {
   const {
     windowStates,
@@ -400,6 +413,36 @@ export default function FloatingWindowOverlay({
           onStop={onLipSyncStop}
           viewerSettings={viewerSettings}
           onViewerSettingsChange={onViewerSettingsChange}
+        />
+      </FloatingWindow>
+
+      {/* Chat Log */}
+      <FloatingWindow
+        title={WINDOW_LABELS.chatLog}
+        visible={windowStates.chatLog.visible}
+        zIndex={windowStates.chatLog.zIndex}
+        position={windowStates.chatLog.position}
+        onPositionChange={(pos) => setPosition("chatLog", pos)}
+        onFocus={() => bringToFront("chatLog")}
+        onClose={() => closeWindow("chatLog")}
+      >
+        <ChatLogWindow messages={chatMessages} />
+      </FloatingWindow>
+
+      {/* Speech Bubble Debug */}
+      <FloatingWindow
+        title={WINDOW_LABELS.speechBubbleDebug}
+        visible={windowStates.speechBubbleDebug.visible}
+        zIndex={windowStates.speechBubbleDebug.zIndex}
+        position={windowStates.speechBubbleDebug.position}
+        onPositionChange={(pos) => setPosition("speechBubbleDebug", pos)}
+        onFocus={() => bringToFront("speechBubbleDebug")}
+        onClose={() => closeWindow("speechBubbleDebug")}
+      >
+        <SpeechBubbleDebugWindow
+          models={loadedModels}
+          onShow={onSpeechBubbleDebugShow}
+          onClear={onSpeechBubbleDebugClear}
         />
       </FloatingWindow>
     </div>

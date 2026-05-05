@@ -1,8 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import FloatingWindowOverlay from "@/components/FloatingWindowOverlay";
+import ChatInputBar from "@/components/ChatInputBar";
 import type { ModelEntry, ModelFile } from "@/types/models";
 import type { PresetMotion } from "@/types/motions";
 import type { TexturePresets } from "@/types/textures";
@@ -28,10 +29,39 @@ import {
   createDirectionalLight,
   type SceneLight,
 } from "@/lib/scene-lights";
+import { streamChatResponse } from "@/lib/chat-stream";
+import type {
+  ChatMessage,
+  ChatSendPayload,
+  ChatTargetMode,
+  ChatTargetsSnapshot,
+  ChatTargetSnapshot,
+  SpeechBubble,
+} from "@/types/chat";
 
 const CharacterViewer = dynamic(() => import("@/components/CharacterViewer"), {
   ssr: false,
 });
+
+const EMPTY_CHAT_TARGETS: ChatTargetsSnapshot = {
+  front: null,
+  nearby: [],
+};
+
+const SPEECH_BUBBLE_DONE_DURATION_MS = 6000;
+const SPEECH_BUBBLE_THROTTLE_MS = 140;
+
+function createMessageId() {
+  return `message-${crypto.randomUUID()}`;
+}
+
+function createBubbleId(modelId: string) {
+  return `speech-bubble-${modelId}`;
+}
+
+function shouldRespond(): boolean {
+  return true;
+}
 
 export default function Home() {
   const [viewerSettings, setViewerSettings] =
@@ -95,6 +125,21 @@ export default function Home() {
     ground: [],
     background: [],
   });
+  const [chatTargetMode, setChatTargetMode] =
+    useState<ChatTargetMode>("front");
+  const [chatTargets, setChatTargets] =
+    useState<ChatTargetsSnapshot>(EMPTY_CHAT_TARGETS);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [speechBubbles, setSpeechBubbles] = useState<SpeechBubble[]>([]);
+  const [chatSending, setChatSending] = useState(false);
+  const bubbleUpdateTimesRef = useRef<Map<string, number>>(new Map());
+
+  const activeChatTargets = useMemo(() => {
+    if (chatTargetMode === "front") {
+      return chatTargets.front ? [chatTargets.front] : [];
+    }
+    return chatTargets.nearby;
+  }, [chatTargetMode, chatTargets.front, chatTargets.nearby]);
 
   const clearAnimationUrls = useCallback(() => {
     setAnimationUrlState((prev) => {
@@ -153,6 +198,17 @@ export default function Home() {
       animationUrlState.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [animationUrlState]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setSpeechBubbles((prev) =>
+        prev.filter((bubble) => !bubble.expiresAt || bubble.expiresAt > now)
+      );
+    }, 500);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (interactionMode !== "placement") {
@@ -302,6 +358,179 @@ export default function Home() {
     });
   }, [setActiveModelId]);
 
+  const upsertSpeechBubble = useCallback(
+    (
+      modelId: string,
+      text: string,
+      status: SpeechBubble["status"],
+      options?: { durationMs?: number; force?: boolean }
+    ) => {
+      const now = Date.now();
+      const last = bubbleUpdateTimesRef.current.get(modelId) ?? 0;
+      if (!options?.force && status === "streaming" && now - last < SPEECH_BUBBLE_THROTTLE_MS) {
+        return;
+      }
+      bubbleUpdateTimesRef.current.set(modelId, now);
+
+      setSpeechBubbles((prev) => {
+        const nextBubble: SpeechBubble = {
+          id: createBubbleId(modelId),
+          modelId,
+          text,
+          createdAt: now,
+          expiresAt:
+            options?.durationMs !== undefined ? now + options.durationMs : null,
+          status,
+        };
+        const rest = prev.filter((bubble) => bubble.modelId !== modelId);
+        return [...rest, nextBubble];
+      });
+    },
+    []
+  );
+
+  const clearSpeechBubble = useCallback((modelId: string | null) => {
+    setSpeechBubbles((prev) =>
+      modelId ? prev.filter((bubble) => bubble.modelId !== modelId) : []
+    );
+  }, []);
+
+  const updateAssistantMessage = useCallback(
+    (
+      messageId: string,
+      updater: (message: ChatMessage) => ChatMessage
+    ) => {
+      setChatMessages((prev) =>
+        prev.map((message) =>
+          message.id === messageId ? updater(message) : message
+        )
+      );
+    },
+    []
+  );
+
+  const runModelChatStream = useCallback(
+    async (
+      target: ChatTargetSnapshot,
+      payload: ChatSendPayload,
+      history: ChatMessage[]
+    ) => {
+      const assistantMessageId = createMessageId();
+      const startedAt = Date.now();
+      let streamedText = "";
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: assistantMessageId,
+          role: "assistant",
+          content: "",
+          createdAt: startedAt,
+          targetMode: chatTargetMode,
+          modelId: target.id,
+          modelName: target.name,
+          modelKind: target.kind,
+          status: "streaming",
+        },
+      ]);
+      upsertSpeechBubble(target.id, "...", "streaming", { force: true });
+
+      try {
+        await streamChatResponse(
+          {
+            targetMode: chatTargetMode,
+            model: target,
+            userMessage: payload.text,
+            attachments: payload.attachments,
+            history,
+          },
+          (delta) => {
+            streamedText += delta;
+            updateAssistantMessage(assistantMessageId, (message) => ({
+              ...message,
+              content: message.content + delta,
+            }));
+            upsertSpeechBubble(target.id, streamedText, "streaming");
+          }
+        );
+
+        updateAssistantMessage(assistantMessageId, (message) => ({
+          ...message,
+          content: message.content || streamedText,
+          status: "done",
+        }));
+        upsertSpeechBubble(
+          target.id,
+          streamedText || "応答が空でした",
+          "done",
+          {
+            durationMs: SPEECH_BUBBLE_DONE_DURATION_MS,
+            force: true,
+          }
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "チャット応答に失敗しました";
+        updateAssistantMessage(assistantMessageId, (current) => ({
+          ...current,
+          content: streamedText || message,
+          status: "error",
+        }));
+        upsertSpeechBubble(target.id, streamedText || message, "error", {
+          durationMs: SPEECH_BUBBLE_DONE_DURATION_MS,
+          force: true,
+        });
+      }
+    },
+    [chatTargetMode, updateAssistantMessage, upsertSpeechBubble]
+  );
+
+  const handleChatSend = useCallback(
+    async (payload: ChatSendPayload) => {
+      const targets = activeChatTargets.filter(shouldRespond);
+      if (targets.length === 0 || chatSending) return;
+
+      const now = Date.now();
+      const userMessage: ChatMessage = {
+        id: createMessageId(),
+        role: "user",
+        content: payload.text,
+        createdAt: now,
+        targetMode: chatTargetMode,
+        attachments: payload.attachments,
+      };
+      const history = chatMessages.slice(-24);
+
+      setChatMessages((prev) => [...prev, userMessage]);
+      setChatSending(true);
+
+      try {
+        for (const target of targets) {
+          await runModelChatStream(target, payload, history);
+        }
+      } finally {
+        setChatSending(false);
+      }
+    },
+    [
+      activeChatTargets,
+      chatMessages,
+      chatSending,
+      chatTargetMode,
+      runModelChatStream,
+    ]
+  );
+
+  const handleSpeechBubbleDebugShow = useCallback(
+    (modelId: string, text: string, durationMs: number) => {
+      upsertSpeechBubble(modelId, text, "done", {
+        durationMs,
+        force: true,
+      });
+    },
+    [upsertSpeechBubble]
+  );
+
   return (
     <div className="h-full w-full relative">
       <div className="h-full w-full">
@@ -324,6 +553,8 @@ export default function Home() {
           onActiveSceneObjectChange={handleActiveSceneObjectChange}
           placementGizmoTarget={placementGizmoTarget}
           sceneObjectScaleVersion={sceneObjectScaleVersion}
+          speechBubbles={speechBubbles}
+          onChatTargetsChange={setChatTargets}
         />
       </div>
       <FloatingWindowOverlay
@@ -366,6 +597,16 @@ export default function Home() {
         getMovementController={getMovementController}
         onLipSyncPlay={playLipSyncAudio}
         onLipSyncStop={stopLipSyncAudio}
+        chatMessages={chatMessages}
+        onSpeechBubbleDebugShow={handleSpeechBubbleDebugShow}
+        onSpeechBubbleDebugClear={clearSpeechBubble}
+      />
+      <ChatInputBar
+        targetMode={chatTargetMode}
+        onTargetModeChange={setChatTargetMode}
+        targets={chatTargets}
+        sending={chatSending}
+        onSend={handleChatSend}
       />
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
-import { OrbitControls } from "@react-three/drei";
-import { useThree } from "@react-three/fiber";
+import { Html, OrbitControls } from "@react-three/drei";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
@@ -21,6 +21,11 @@ import {
 import type { SceneLight } from "@/lib/scene-lights";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { SceneObject } from "@/types/sceneObjects";
+import type {
+  ChatTargetSnapshot,
+  ChatTargetsSnapshot,
+  SpeechBubble,
+} from "@/types/chat";
 import FreeCameraControls from "./FreeCameraControls";
 import CharacterModels from "./CharacterModels";
 import SceneObjects from "./SceneObjects";
@@ -49,6 +54,8 @@ interface CharacterSceneProps {
   onActiveSceneObjectChange: (id: string) => void;
   placementGizmoTarget: PlacementGizmoTarget | null;
   sceneObjectScaleVersion: number;
+  speechBubbles: SpeechBubble[];
+  onChatTargetsChange: (targets: ChatTargetsSnapshot) => void;
 }
 
 const FLOOR_Y = 0;
@@ -59,6 +66,16 @@ const SHALLOW_VIEW_Y_THRESHOLD = 0.12;
 const COLLISION_PADDING = 0.5;
 const SEARCH_SEGMENTS = 16;
 const MAX_SEARCH_RINGS = 6;
+const CHAT_TARGET_UPDATE_INTERVAL_MS = 200;
+const FRONT_TARGET_MAX_DISTANCE = 25;
+const FRONT_TARGET_MAX_ANGLE_RAD = THREE.MathUtils.degToRad(20);
+const NEARBY_TARGET_MAX_DISTANCE = 12;
+const SPEECH_BUBBLE_VERTICAL_OFFSET = 0.45;
+const tmpChatForward = new THREE.Vector3();
+const tmpChatCenter = new THREE.Vector3();
+const tmpChatDirection = new THREE.Vector3();
+const tmpChatBox = new THREE.Box3();
+const tmpBubbleBox = new THREE.Box3();
 
 interface PlacementFootprint {
   position: THREE.Vector3;
@@ -226,6 +243,141 @@ interface PlaceableTarget {
   object: THREE.Object3D;
 }
 
+function getModelCenter(model: CharacterModel, target: THREE.Vector3): boolean {
+  model.object.updateMatrixWorld(true);
+  tmpChatBox.setFromObject(model.object);
+  if (tmpChatBox.isEmpty()) {
+    target.copy(model.object.position);
+    return true;
+  }
+  tmpChatBox.getCenter(target);
+  return true;
+}
+
+function buildChatTargets(
+  models: CharacterModel[],
+  camera: THREE.Camera
+): ChatTargetsSnapshot {
+  camera.getWorldDirection(tmpChatForward).normalize();
+
+  const nearby: ChatTargetSnapshot[] = [];
+  let frontCandidate:
+    | (ChatTargetSnapshot & { screenOffset: number; angle: number })
+    | null = null;
+
+  for (const model of models) {
+    if (!getModelCenter(model, tmpChatCenter)) continue;
+
+    const distance = camera.position.distanceTo(tmpChatCenter);
+    const snapshot: ChatTargetSnapshot = {
+      id: model.id,
+      name: model.name,
+      kind: model.kind,
+      distance,
+    };
+
+    if (distance <= NEARBY_TARGET_MAX_DISTANCE) {
+      nearby.push(snapshot);
+    }
+
+    if (distance <= FRONT_TARGET_MAX_DISTANCE) {
+      tmpChatDirection.copy(tmpChatCenter).sub(camera.position);
+      if (tmpChatDirection.lengthSq() > 1e-6) {
+        tmpChatDirection.normalize();
+        const angle = tmpChatForward.angleTo(tmpChatDirection);
+        if (angle <= FRONT_TARGET_MAX_ANGLE_RAD) {
+          const projected = tmpChatCenter.clone().project(camera);
+          if (projected.z >= -1 && projected.z <= 1) {
+            const screenOffset = Math.hypot(projected.x, projected.y);
+            if (
+              !frontCandidate ||
+              screenOffset < frontCandidate.screenOffset ||
+              (screenOffset === frontCandidate.screenOffset &&
+                distance < frontCandidate.distance)
+            ) {
+              frontCandidate = { ...snapshot, screenOffset, angle };
+            }
+          }
+        }
+      }
+    }
+  }
+
+  nearby.sort((a, b) => a.distance - b.distance);
+
+  return {
+    front: frontCandidate
+      ? {
+          id: frontCandidate.id,
+          name: frontCandidate.name,
+          kind: frontCandidate.kind,
+          distance: frontCandidate.distance,
+        }
+      : null,
+    nearby,
+  };
+}
+
+function getChatTargetSignature(targets: ChatTargetsSnapshot): string {
+  return `${targets.front?.id ?? ""}|${targets.nearby
+    .map((target) => target.id)
+    .join(",")}`;
+}
+
+function shortenBubbleText(text: string): string {
+  const normalized = text.trim();
+  if (normalized.length <= 80) return normalized;
+  return `...${normalized.slice(-77)}`;
+}
+
+function SpeechBubbleAnchor({
+  model,
+  bubble,
+}: {
+  model: CharacterModel;
+  bubble: SpeechBubble;
+}) {
+  const groupRef = useRef<THREE.Group | null>(null);
+
+  useFrame(() => {
+    const group = groupRef.current;
+    if (!group) return;
+
+    model.object.updateMatrixWorld(true);
+    tmpBubbleBox.setFromObject(model.object);
+    if (tmpBubbleBox.isEmpty()) {
+      group.position.set(
+        model.object.position.x,
+        model.object.position.y + 2,
+        model.object.position.z
+      );
+      return;
+    }
+
+    const center = tmpBubbleBox.getCenter(new THREE.Vector3());
+    group.position.set(
+      center.x,
+      tmpBubbleBox.max.y + SPEECH_BUBBLE_VERTICAL_OFFSET,
+      center.z
+    );
+  });
+
+  return (
+    <group ref={groupRef}>
+      <Html center distanceFactor={12} occlude={false} zIndexRange={[50, 0]}>
+        <div className="max-w-64 rounded-lg border border-gray-200/80 bg-white/95 px-3 py-2 text-center text-xs leading-relaxed text-gray-950 shadow-xl">
+          <div className="whitespace-pre-wrap break-words">
+            {shortenBubbleText(bubble.text)}
+            {bubble.status === "streaming" ? (
+              <span className="ml-0.5 text-sky-500">▌</span>
+            ) : null}
+          </div>
+        </div>
+      </Html>
+    </group>
+  );
+}
+
 function placeNewTargets(
   newTargets: PlaceableTarget[],
   existingTargets: PlaceableTarget[],
@@ -286,6 +438,8 @@ export default function CharacterScene({
   onActiveSceneObjectChange,
   placementGizmoTarget,
   sceneObjectScaleVersion,
+  speechBubbles,
+  onChatTargetsChange,
 }: CharacterSceneProps) {
   const defaultTarget = useMemo(() => new THREE.Vector3(0, 10, 0), []);
   const {
@@ -313,6 +467,8 @@ export default function CharacterScene({
   );
   const previousInteractionModeRef = useRef(interactionMode);
   const freeCameraLookTargetRef = useRef<THREE.Vector3 | null>(null);
+  const lastChatTargetUpdateRef = useRef(0);
+  const lastChatTargetSignatureRef = useRef("");
   const placementCameraControlsEnabled =
     interactionMode === "placement" &&
     isAltPressed &&
@@ -390,6 +546,23 @@ export default function CharacterScene({
     () => freeCameraLookTargetRef.current,
     []
   );
+
+  useFrame((state) => {
+    const now = state.clock.elapsedTime * 1000;
+    if (now - lastChatTargetUpdateRef.current < CHAT_TARGET_UPDATE_INTERVAL_MS) {
+      return;
+    }
+    lastChatTargetUpdateRef.current = now;
+
+    const targets = buildChatTargets(models, camera);
+    const signature = getChatTargetSignature(targets);
+    if (signature === lastChatTargetSignatureRef.current) {
+      return;
+    }
+
+    lastChatTargetSignatureRef.current = signature;
+    onChatTargetsChange(targets);
+  });
 
   useEffect(() => {
     syncLive2dRenderer(gl);
@@ -605,6 +778,18 @@ export default function CharacterScene({
         getMovementController={getMovementController}
         getLipSyncController={getLipSyncController}
       />
+
+      {speechBubbles.map((bubble) => {
+        const model = models.find((item) => item.id === bubble.modelId);
+        if (!model) return null;
+        return (
+          <SpeechBubbleAnchor
+            key={bubble.id}
+            model={model}
+            bubble={bubble}
+          />
+        );
+      })}
 
       <SceneObjects
         sceneObjects={sceneObjects}

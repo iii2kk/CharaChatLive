@@ -10,6 +10,7 @@ import type { LipSyncController } from "@/lib/character/lipSyncController";
 import type { InteractionMode } from "@/lib/interaction-mode";
 import type { SceneLight } from "@/lib/scene-lights";
 import type { SceneObject } from "@/types/sceneObjects";
+import type { ChatTargetsSnapshot, SpeechBubble } from "@/types/chat";
 import type { PlacementGizmoTarget } from "./ModelPlacementGizmo";
 import CharacterScene from "./CharacterScene";
 
@@ -32,6 +33,8 @@ interface CharacterViewerProps {
   onActiveSceneObjectChange: (id: string) => void;
   placementGizmoTarget: PlacementGizmoTarget | null;
   sceneObjectScaleVersion: number;
+  speechBubbles: SpeechBubble[];
+  onChatTargetsChange: (targets: ChatTargetsSnapshot) => void;
 }
 
 const baseColors = new WeakMap<THREE.Material, THREE.Color>();
@@ -134,6 +137,8 @@ export default function CharacterViewer({
   onActiveSceneObjectChange,
   placementGizmoTarget,
   sceneObjectScaleVersion,
+  speechBubbles,
+  onChatTargetsChange,
 }: CharacterViewerProps) {
   return (
     <Canvas
@@ -166,6 +171,8 @@ export default function CharacterViewer({
           onActiveSceneObjectChange={onActiveSceneObjectChange}
           placementGizmoTarget={placementGizmoTarget}
           sceneObjectScaleVersion={sceneObjectScaleVersion}
+          speechBubbles={speechBubbles}
+          onChatTargetsChange={onChatTargetsChange}
         />
       </Suspense>
     </Canvas>
