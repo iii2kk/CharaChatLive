@@ -299,7 +299,7 @@ export class MmdCharacterModel implements CharacterModel {
       this.applyTPoseRestOffset();
     }
 
-    if (opts.pmxMorphData && opts.pmxMorphData.materialMorphs.length > 0) {
+    if (opts.pmxMorphData) {
       this.materialMorphController = new PmxMaterialMorphController(
         this.mesh.material,
         opts.pmxMorphData.materialMorphs,
@@ -352,6 +352,16 @@ export class MmdCharacterModel implements CharacterModel {
 
   finalizeFrame(context: CharacterFrameContext): void {
     void context;
+  }
+
+  setMaterialTuning(
+    diffuseMultiplier: number,
+    emissiveMultiplier: number
+  ): void {
+    this.materialMorphController?.setMaterialTuning(
+      diffuseMultiplier,
+      emissiveMultiplier
+    );
   }
 
   dispose(): void {

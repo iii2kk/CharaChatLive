@@ -90,6 +90,13 @@ function MaterialTuner({
       // Live2D は板ポリ + CanvasTexture なので、MMD/VRM 向けのマテリアル調整を
       // 適用すると表示色が壊れるためスキップする。
       if (model.kind === "live2d") continue;
+      if (model.setMaterialTuning) {
+        model.setMaterialTuning(
+          viewerSettings.diffuseMultiplier,
+          viewerSettings.emissiveMultiplier
+        );
+        continue;
+      }
       tuneObject3D(
         model.object,
         viewerSettings.diffuseMultiplier,

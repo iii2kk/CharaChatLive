@@ -285,5 +285,6 @@ export interface CharacterModel {
   finalizeFrame(context: CharacterFrameContext): void;
   setRenderScale?(scale: number): void;
   setDisplayScale?(scale: number): void;
+  setMaterialTuning?(diffuseMultiplier: number, emissiveMultiplier: number): void;
   dispose(): void;
 }

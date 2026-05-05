@@ -29,6 +29,7 @@ interface MaterialLike {
   transparent?: boolean;
   depthWrite?: boolean;
   emissive?: THREE.Color;
+  needsUpdate?: boolean;
   userData?: Record<string, unknown>;
 }
 
@@ -140,6 +141,8 @@ export class PmxMaterialMorphController {
   private snapshots: MaterialSnapshot[] = [];
   /** indices of materials any active morph might affect */
   private affectedIndices = new Set<number>();
+  private diffuseMultiplier = 1;
+  private emissiveMultiplier = 1;
 
   constructor(
     materials: THREE.Material | THREE.Material[],
@@ -211,6 +214,21 @@ export class PmxMaterialMorphController {
     this.recompute();
   }
 
+  setMaterialTuning(
+    diffuseMultiplier: number,
+    emissiveMultiplier: number
+  ): void {
+    if (
+      this.diffuseMultiplier === diffuseMultiplier &&
+      this.emissiveMultiplier === emissiveMultiplier
+    ) {
+      return;
+    }
+    this.diffuseMultiplier = diffuseMultiplier;
+    this.emissiveMultiplier = emissiveMultiplier;
+    this.recompute(true);
+  }
+
   reset(): void {
     let changed = false;
     for (const [k, v] of this.weights) {
@@ -226,7 +244,7 @@ export class PmxMaterialMorphController {
    * Re-evaluate all affected materials from base snapshots.
    * Called whenever any material morph weight changes.
    */
-  private recompute(): void {
+  private recompute(applyTuningToAllMaterials = false): void {
     // Per-material accumulators
     type Acc = {
       mulColor: THREE.Color;
@@ -317,26 +335,45 @@ export class PmxMaterialMorphController {
     }
 
     // Apply to materials. Affected materials with no acc entry (=> all weights 0
-    // or only inactive) revert to base snapshot.
-    for (const idx of this.affectedIndices) {
+    // or only inactive) revert to base snapshot. On viewer material tuning
+    // changes, also refresh non-morph materials' color/emissive without touching
+    // their opacity/render queue state.
+    const targetIndices = applyTuningToAllMaterials
+      ? Array.from({ length: this.snapshots.length }, (_, i) => i)
+      : Array.from(this.affectedIndices);
+
+    for (const idx of targetIndices) {
       const snap = this.snapshots[idx];
       if (!snap) continue;
       const acc = accs.get(idx);
       const m = snap.material;
+      const isMorphAffected = this.affectedIndices.has(idx);
       if (!acc) {
         if (m.color) m.color.copy(snap.baseColor);
-        if (m.opacity !== undefined) m.opacity = snap.baseOpacity;
-        m.transparent = snap.baseTransparent;
-        m.depthWrite = snap.baseDepthWrite;
+        if (m.color) m.color.multiplyScalar(this.diffuseMultiplier);
+        if (isMorphAffected) {
+          if (m.opacity !== undefined) m.opacity = snap.baseOpacity;
+          if (
+            m.transparent !== snap.baseTransparent ||
+            m.depthWrite !== snap.baseDepthWrite
+          ) {
+            m.needsUpdate = true;
+          }
+          m.transparent = snap.baseTransparent;
+          m.depthWrite = snap.baseDepthWrite;
+        }
         if (m.emissive && snap.baseEmissive) {
           m.emissive.copy(snap.baseEmissive);
+          m.emissive.multiplyScalar(this.emissiveMultiplier);
         }
-        const outline = getOutlineParams(m);
-        if (outline && snap.baseOutlineColor) {
-          if (outline.color instanceof THREE.Color) {
-            outline.color.copy(snap.baseOutlineColor);
+        if (isMorphAffected) {
+          const outline = getOutlineParams(m);
+          if (outline && snap.baseOutlineColor) {
+            if (outline.color instanceof THREE.Color) {
+              outline.color.copy(snap.baseOutlineColor);
+            }
+            outline.alpha = snap.baseOutlineAlpha;
           }
-          outline.alpha = snap.baseOutlineAlpha;
         }
         continue;
       }
@@ -345,6 +382,7 @@ export class PmxMaterialMorphController {
         m.color.r = snap.baseColor.r * acc.mulColor.r + acc.addColor.r;
         m.color.g = snap.baseColor.g * acc.mulColor.g + acc.addColor.g;
         m.color.b = snap.baseColor.b * acc.mulColor.b + acc.addColor.b;
+        m.color.multiplyScalar(this.diffuseMultiplier);
       }
       let finalOpacity = snap.baseOpacity;
       if (m.opacity !== undefined) {
@@ -359,9 +397,18 @@ export class PmxMaterialMorphController {
       // them in the transparent render queue and breaks depth ordering on
       // characters that have material morphs but aren't currently using them.
       if (finalOpacity < 1 - OPACITY_EPS) {
+        if (m.transparent !== true || m.depthWrite !== false) {
+          m.needsUpdate = true;
+        }
         m.transparent = true;
         m.depthWrite = false;
       } else {
+        if (
+          m.transparent !== snap.baseTransparent ||
+          m.depthWrite !== snap.baseDepthWrite
+        ) {
+          m.needsUpdate = true;
+        }
         m.transparent = snap.baseTransparent;
         m.depthWrite = snap.baseDepthWrite;
       }
@@ -372,6 +419,7 @@ export class PmxMaterialMorphController {
           snap.baseEmissive.g * acc.mulAmbient.g + acc.addAmbient.g;
         m.emissive.b =
           snap.baseEmissive.b * acc.mulAmbient.b + acc.addAmbient.b;
+        m.emissive.multiplyScalar(this.emissiveMultiplier);
       }
       const outline = getOutlineParams(m);
       if (outline && snap.baseOutlineColor) {
