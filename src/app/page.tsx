@@ -30,6 +30,7 @@ import {
   type SceneLight,
 } from "@/lib/scene-lights";
 import { streamChatResponse } from "@/lib/chat-stream";
+import { synthesizeSpeechUrl } from "@/lib/tts";
 import type {
   ChatMessage,
   ChatSendPayload,
@@ -133,6 +134,7 @@ export default function Home() {
   const [speechBubbles, setSpeechBubbles] = useState<SpeechBubble[]>([]);
   const [chatSending, setChatSending] = useState(false);
   const bubbleUpdateTimesRef = useRef<Map<string, number>>(new Map());
+  const ttsAudioUrlsRef = useRef<Map<string, () => void>>(new Map());
 
   const activeChatTargets = useMemo(() => {
     if (chatTargetMode === "front") {
@@ -209,6 +211,16 @@ export default function Home() {
 
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(
+    () => () => {
+      for (const revoke of ttsAudioUrlsRef.current.values()) {
+        revoke();
+      }
+      ttsAudioUrlsRef.current.clear();
+    },
+    []
+  );
 
   useEffect(() => {
     if (interactionMode !== "placement") {
@@ -409,6 +421,40 @@ export default function Home() {
     []
   );
 
+  const playTtsForModel = useCallback(
+    async (target: ChatTargetSnapshot, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      const previousRevoke = ttsAudioUrlsRef.current.get(target.id);
+      previousRevoke?.();
+      ttsAudioUrlsRef.current.delete(target.id);
+
+      const audioUrl = await synthesizeSpeechUrl(target, trimmed);
+      ttsAudioUrlsRef.current.set(target.id, audioUrl.revoke);
+
+      const audio = await playLipSyncAudio(target.id, audioUrl.url);
+      if (!audio) {
+        audioUrl.revoke();
+        ttsAudioUrlsRef.current.delete(target.id);
+        return;
+      }
+
+      const cleanup = () => {
+        audio.removeEventListener("ended", cleanup);
+        audio.removeEventListener("error", cleanup);
+        const revoke = ttsAudioUrlsRef.current.get(target.id);
+        if (revoke === audioUrl.revoke) {
+          revoke();
+          ttsAudioUrlsRef.current.delete(target.id);
+        }
+      };
+      audio.addEventListener("ended", cleanup);
+      audio.addEventListener("error", cleanup);
+    },
+    [playLipSyncAudio]
+  );
+
   const runModelChatStream = useCallback(
     async (
       target: ChatTargetSnapshot,
@@ -468,6 +514,9 @@ export default function Home() {
             force: true,
           }
         );
+        void playTtsForModel(target, streamedText).catch((error) => {
+          console.error("TTS playback failed:", error);
+        });
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "チャット応答に失敗しました";
@@ -482,7 +531,12 @@ export default function Home() {
         });
       }
     },
-    [chatTargetMode, updateAssistantMessage, upsertSpeechBubble]
+    [
+      chatTargetMode,
+      playTtsForModel,
+      updateAssistantMessage,
+      upsertSpeechBubble,
+    ]
   );
 
   const handleChatSend = useCallback(

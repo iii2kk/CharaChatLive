@@ -66,6 +66,6 @@ export const defaultViewerSettings: ViewerSettings = {
   backgroundTextureUrl: null,
   backgroundIsEquirect: true,
   backgroundColor: "#1a1a2e",
-  spatialAudioEnabled: false,
+  spatialAudioEnabled: true,
   spatialAudioMode: "builtin-hrtf",
 };
