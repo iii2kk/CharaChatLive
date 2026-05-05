@@ -389,6 +389,10 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
     viewerSettings.gravityX,
     viewerSettings.gravityY,
     viewerSettings.gravityZ,
+    viewerSettings.mmdPhysicsJointSpringDamping,
+    viewerSettings.mmdPhysicsPositionDamping,
+    viewerSettings.mmdPhysicsRotationDamping,
+    viewerSettings.mmdPhysicsSleepEnabled,
     viewerSettings.physicsEnabled,
     syncModels,
   ]);

@@ -47,14 +47,9 @@ export function useLipSync(
   options?: UseLipSyncOptions
 ): LipSyncApi {
   const controllersRef = useRef<Map<string, LipSyncController>>(new Map());
-  const detectorFactoryRef = useRef(options?.detectorFactory);
-  detectorFactoryRef.current = options?.detectorFactory;
+  const detectorFactory = options?.detectorFactory;
   const spatialEnabled = options?.spatialAudioEnabled ?? false;
   const spatialMode: BinauralMode = options?.spatialAudioMode ?? "builtin-hrtf";
-  const spatialEnabledRef = useRef(spatialEnabled);
-  const spatialModeRef = useRef(spatialMode);
-  spatialEnabledRef.current = spatialEnabled;
-  spatialModeRef.current = spatialMode;
 
   useEffect(() => {
     const map = controllersRef.current;
@@ -70,16 +65,16 @@ export function useLipSync(
     for (const model of models) {
       if (!map.has(model.id)) {
         const ctrl = new LipSyncController(model, {
-          detectorFactory: detectorFactoryRef.current,
+          detectorFactory,
         });
         ctrl.setSpatial({
-          enabled: spatialEnabledRef.current,
-          mode: spatialModeRef.current,
+          enabled: spatialEnabled,
+          mode: spatialMode,
         });
         map.set(model.id, ctrl);
       }
     }
-  }, [models]);
+  }, [models, detectorFactory, spatialEnabled, spatialMode]);
 
   useEffect(() => {
     for (const ctrl of controllersRef.current.values()) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useReducer, useState } from "react";
 import type {
   CharacterModel,
   MmdBodyInfo,
@@ -12,19 +12,14 @@ interface Props {
 }
 
 export default function MmdPhysicsBodiesPanel({ activeModel }: Props) {
-  const [bodies, setBodies] = useState<MmdBodyInfo[]>([]);
+  const [, refresh] = useReducer((version) => version + 1, 0);
   const [bulkMass, setBulkMass] = useState(0.1);
   const [bulkFriction, setBulkFriction] = useState(0.5);
   const [bulkRestitution, setBulkRestitution] = useState(0);
 
-  const refresh = useCallback(() => {
-    const list = activeModel?.physics.listBodies?.() ?? [];
-    setBodies(list.filter((b) => b.type !== 0));
-  }, [activeModel]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  const bodies = (activeModel?.physics.listBodies?.() ?? []).filter(
+    (body) => body.type !== 0
+  );
 
   if (activeModel?.physics.capability !== "full") return null;
 
@@ -44,9 +39,7 @@ export default function MmdPhysicsBodiesPanel({ activeModel }: Props) {
 
   const handleBodyChange = (id: number, params: MmdBodyParams) => {
     activeModel.physics.setBody?.(id, params);
-    setBodies((prev) =>
-      prev.map((b) => (b.id === id ? { ...b, ...params } : b))
-    );
+    refresh();
   };
 
   return (
@@ -176,15 +169,6 @@ function BodyRow({
   body: MmdBodyInfo;
   onChange: (p: MmdBodyParams) => void;
 }) {
-  const [mass, setMass] = useState(body.mass);
-  const [friction, setFriction] = useState(body.friction);
-  const [restitution, setRestitution] = useState(body.restitution);
-
-  // 親側からの更新（PMX 値リセット等）を反映
-  useEffect(() => setMass(body.mass), [body.mass]);
-  useEffect(() => setFriction(body.friction), [body.friction]);
-  useEffect(() => setRestitution(body.restitution), [body.restitution]);
-
   return (
     <div
       className="grid gap-1 px-2 py-0.5 text-[10px] items-center hover:bg-gray-800/50 border-b border-gray-800/40"
@@ -193,32 +177,23 @@ function BodyRow({
     >
       <span className="truncate text-gray-300">{body.name}</span>
       <NumberCell
-        value={mass}
+        value={body.mass}
         step={0.005}
         min={0.001}
-        onChange={(v) => {
-          setMass(v);
-          onChange({ mass: v });
-        }}
+        onChange={(v) => onChange({ mass: v })}
       />
       <NumberCell
-        value={friction}
+        value={body.friction}
         step={0.01}
         min={0}
-        onChange={(v) => {
-          setFriction(v);
-          onChange({ friction: v });
-        }}
+        onChange={(v) => onChange({ friction: v })}
       />
       <NumberCell
-        value={restitution}
+        value={body.restitution}
         step={0.01}
         min={0}
         max={1}
-        onChange={(v) => {
-          setRestitution(v);
-          onChange({ restitution: v });
-        }}
+        onChange={(v) => onChange({ restitution: v })}
       />
     </div>
   );
