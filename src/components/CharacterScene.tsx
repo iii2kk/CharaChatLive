@@ -364,8 +364,8 @@ function SpeechBubbleAnchor({
 
   return (
     <group ref={groupRef}>
-      <Html center distanceFactor={12} occlude={false} zIndexRange={[50, 0]}>
-        <div className="max-w-64 rounded-lg border border-gray-200/80 bg-white/95 px-3 py-2 text-center text-xs leading-relaxed text-gray-950 shadow-xl">
+      <Html center distanceFactor={18} occlude={false} zIndexRange={[50, 0]}>
+        <div className="max-w-96 rounded-lg border border-gray-200/80 bg-white/95 px-4 py-3 text-center text-base leading-relaxed text-gray-950 shadow-xl">
           <div className="whitespace-pre-wrap break-words">
             {shortenBubbleText(bubble.text)}
             {bubble.status === "streaming" ? (
