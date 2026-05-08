@@ -44,10 +44,30 @@ function findFirstMeshMaterial(
   return found;
 }
 
-export function createMorphController(
+export interface SceneObjectControllers {
+  morphs?: SceneObjectMorphController;
+  materialController?: PmxMaterialMorphController;
+}
+
+function createMaterialMorphController(
   root: THREE.Object3D,
   pmx?: LoadedPmxMesh | null
-): SceneObjectMorphController | undefined {
+): PmxMaterialMorphController | undefined {
+  if (!pmx || pmx.materialMorphs.length === 0) return undefined;
+  const material = findFirstMeshMaterial(root);
+  if (!material) return undefined;
+  return new PmxMaterialMorphController(
+    material,
+    pmx.materialMorphs,
+    pmx.groupMorphs,
+    pmx.allMorphs
+  );
+}
+
+export function createSceneObjectControllers(
+  root: THREE.Object3D,
+  pmx?: LoadedPmxMesh | null
+): SceneObjectControllers {
   const targets = new Map<string, MorphTarget>();
   const collisions = new Map<string, number>();
 
@@ -61,20 +81,9 @@ export function createMorphController(
     }
   });
 
-  let materialController: PmxMaterialMorphController | null = null;
-  if (pmx && pmx.materialMorphs.length > 0) {
-    const material = findFirstMeshMaterial(root);
-    if (material) {
-      materialController = new PmxMaterialMorphController(
-        material,
-        pmx.materialMorphs,
-        pmx.groupMorphs,
-        pmx.allMorphs
-      );
-    }
-  }
+  const materialController = createMaterialMorphController(root, pmx);
 
-  if (collected.length === 0 && !materialController) return undefined;
+  if (collected.length === 0 && !materialController) return {};
 
   for (const t of collected) {
     const displayName =
@@ -87,12 +96,19 @@ export function createMorphController(
   const list: SceneObjectMorphInfo[] = Array.from(targets.entries()).map(
     ([name, t]) => ({ name, meshName: t.meshName })
   );
+  if (materialController) {
+    for (const name of materialController.listNames()) {
+      if (!targets.has(name)) {
+        list.push({ name, meshName: "material" });
+      }
+    }
+  }
 
-  return {
+  const morphs: SceneObjectMorphController = {
     list: () => list,
     get: (name) => {
       const t = targets.get(name);
-      if (!t) return 0;
+      if (!t) return materialController?.getWeight(name) ?? 0;
       return t.mesh.morphTargetInfluences?.[t.index] ?? 0;
     },
     set: (name, weight) => {
@@ -111,4 +127,13 @@ export function createMorphController(
       materialController?.reset();
     },
   };
+
+  return { morphs, materialController };
+}
+
+export function createMorphController(
+  root: THREE.Object3D,
+  pmx?: LoadedPmxMesh | null
+): SceneObjectMorphController | undefined {
+  return createSceneObjectControllers(root, pmx).morphs;
 }

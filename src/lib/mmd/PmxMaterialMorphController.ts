@@ -392,16 +392,18 @@ export class PmxMaterialMorphController {
         );
         m.opacity = finalOpacity;
       }
-      // Toggle transparent/depthWrite only when the morph actually drives
-      // opacity below 1. Keeping transparent=true on opaque materials puts
-      // them in the transparent render queue and breaks depth ordering on
-      // characters that have material morphs but aren't currently using them.
+      // Toggle transparent only when the morph actually drives opacity below
+      // 1. For semi-transparent materials, keep the loader's depthWrite choice:
+      // PMX stage assets often rely on that initial ordering. Only suppress
+      // depth writes when the morph effectively hides the material.
       if (finalOpacity < 1 - OPACITY_EPS) {
-        if (m.transparent !== true || m.depthWrite !== false) {
+        const nextDepthWrite =
+          finalOpacity <= OPACITY_EPS ? false : snap.baseDepthWrite;
+        if (m.transparent !== true || m.depthWrite !== nextDepthWrite) {
           m.needsUpdate = true;
         }
         m.transparent = true;
-        m.depthWrite = false;
+        m.depthWrite = nextDepthWrite;
       } else {
         if (
           m.transparent !== snap.baseTransparent ||

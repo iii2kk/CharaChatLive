@@ -107,6 +107,13 @@ function MaterialTuner({
       );
     }
     for (const obj of sceneObjects) {
+      if (obj.setMaterialTuning) {
+        obj.setMaterialTuning(
+          viewerSettings.diffuseMultiplier,
+          viewerSettings.emissiveMultiplier
+        );
+        continue;
+      }
       tuneObject3D(
         obj.object,
         viewerSettings.diffuseMultiplier,

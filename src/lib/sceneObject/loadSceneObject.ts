@@ -3,7 +3,7 @@ import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { VRM_TO_MMD_SCALE } from "@/lib/character/VrmCharacterModel";
 import type { SceneObject, SceneObjectKind } from "@/types/sceneObjects";
-import { createMorphController } from "./createMorphController";
+import { createSceneObjectControllers } from "./createMorphController";
 import { loadPmxMesh, type LoadedPmxMesh } from "@/lib/mmd/loadPmxMesh";
 
 interface VRMGLTF extends GLTF {
@@ -167,7 +167,10 @@ export async function loadSceneObject(
   object.userData.sourcePath = sourcePath;
 
   const id = generateSceneObjectId();
-  const morphs = createMorphController(object, pmxData);
+  const { morphs, materialController } = createSceneObjectControllers(
+    object,
+    pmxData
+  );
   let disposed = false;
 
   return {
@@ -177,9 +180,18 @@ export async function loadSceneObject(
     kind,
     object,
     morphs,
+    setMaterialTuning: materialController
+      ? (diffuseMultiplier, emissiveMultiplier) => {
+          materialController.setMaterialTuning(
+            diffuseMultiplier,
+            emissiveMultiplier
+          );
+        }
+      : undefined,
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      materialController?.dispose();
       object.removeFromParent();
       disposeObject3D(object);
     },

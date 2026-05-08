@@ -21,6 +21,10 @@ export interface SceneObject {
   readonly kind: SceneObjectKind;
   readonly object: THREE.Object3D;
   readonly morphs?: SceneObjectMorphController;
+  setMaterialTuning?(
+    diffuseMultiplier: number,
+    emissiveMultiplier: number
+  ): void;
   dispose(): void;
 }
 
