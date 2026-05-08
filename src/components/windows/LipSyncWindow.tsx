@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ScrollArea from "@/components/ScrollArea";
 import type { CharacterModel } from "@/hooks/useModelLoader";
 import type { ViewerSettings } from "@/lib/viewer-settings";
+import type { VoiceProfile } from "@/types/tts";
 
 interface SoundEntry {
   name: string;
@@ -20,6 +21,12 @@ interface LipSyncWindowProps {
   onStop: (modelId: string) => void;
   viewerSettings: ViewerSettings;
   onViewerSettingsChange: React.Dispatch<React.SetStateAction<ViewerSettings>>;
+  voiceProfiles: VoiceProfile[];
+  voiceProfilesLoading: boolean;
+  voiceProfilesError: string | null;
+  selectedVoiceProfileId: string | null;
+  onVoiceProfileChange: (modelId: string, profileId: string | null) => void;
+  onVoiceProfilesReload: () => void;
 }
 
 export default function LipSyncWindow({
@@ -28,6 +35,12 @@ export default function LipSyncWindow({
   onStop,
   viewerSettings,
   onViewerSettingsChange,
+  voiceProfiles,
+  voiceProfilesLoading,
+  voiceProfilesError,
+  selectedVoiceProfileId,
+  onVoiceProfileChange,
+  onVoiceProfilesReload,
 }: LipSyncWindowProps) {
   const [sounds, setSounds] = useState<SoundEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -106,6 +119,50 @@ export default function LipSyncWindow({
       {error ? (
         <p className="text-xs text-red-400">{error}</p>
       ) : null}
+
+      <div className="flex flex-col gap-2 rounded border border-gray-700 px-2 py-1.5 text-xs">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-gray-400">音声プロファイル</span>
+          <button
+            type="button"
+            onClick={onVoiceProfilesReload}
+            disabled={voiceProfilesLoading}
+            className="rounded bg-gray-800 px-2 py-0.5 text-gray-200 hover:bg-gray-700 disabled:opacity-50"
+          >
+            {voiceProfilesLoading ? "読込中..." : "更新"}
+          </button>
+        </div>
+        <select
+          value={selectedVoiceProfileId ?? ""}
+          onChange={(e) => {
+            onVoiceProfileChange(
+              activeModel.id,
+              e.currentTarget.value === "" ? null : e.currentTarget.value
+            );
+          }}
+          className="rounded bg-gray-800 px-2 py-1 text-gray-200"
+        >
+          <option value="">未指定</option>
+          {voiceProfiles.map((profile) => (
+            <option key={profile.id} value={profile.id}>
+              {profile.name} ({profile.kind})
+            </option>
+          ))}
+        </select>
+        {voiceProfilesError ? (
+          <p className="text-[10px] text-red-300">{voiceProfilesError}</p>
+        ) : null}
+        {selectedVoiceProfileId ? (
+          <p className="text-[10px] text-gray-500">
+            {voiceProfiles.find((profile) => profile.id === selectedVoiceProfileId)
+              ?.description ?? selectedVoiceProfileId}
+          </p>
+        ) : (
+          <p className="text-[10px] text-gray-500">
+            Irodori-TTS の voice_profile_id をTTS時に渡します
+          </p>
+        )}
+      </div>
 
       <div className="flex flex-col gap-1 rounded border border-gray-700 px-2 py-1.5 text-xs">
         <label className="flex items-center gap-1.5 text-gray-200">

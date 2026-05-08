@@ -20,6 +20,7 @@ import type { InteractionMode } from "@/lib/interaction-mode";
 import type { ViewerSettings } from "@/lib/viewer-settings";
 import type { SceneLight } from "@/lib/scene-lights";
 import type { ChatMessage } from "@/types/chat";
+import type { VoiceProfile } from "@/types/tts";
 
 import PresetModelsWindow, {
   type PresetLoadOptions,
@@ -94,6 +95,12 @@ interface FloatingWindowOverlayProps {
     durationMs: number
   ) => void;
   onSpeechBubbleDebugClear: (modelId: string | null) => void;
+  voiceProfiles: VoiceProfile[];
+  voiceProfilesLoading: boolean;
+  voiceProfilesError: string | null;
+  selectedVoiceProfileId: string | null;
+  onVoiceProfileChange: (modelId: string, profileId: string | null) => void;
+  onVoiceProfilesReload: () => void;
 }
 
 /** Content window IDs (all except menu) */
@@ -144,6 +151,12 @@ export default function FloatingWindowOverlay({
   chatMessages,
   onSpeechBubbleDebugShow,
   onSpeechBubbleDebugClear,
+  voiceProfiles,
+  voiceProfilesLoading,
+  voiceProfilesError,
+  selectedVoiceProfileId,
+  onVoiceProfileChange,
+  onVoiceProfilesReload,
 }: FloatingWindowOverlayProps) {
   const {
     windowStates,
@@ -413,6 +426,12 @@ export default function FloatingWindowOverlay({
           onStop={onLipSyncStop}
           viewerSettings={viewerSettings}
           onViewerSettingsChange={onViewerSettingsChange}
+          voiceProfiles={voiceProfiles}
+          voiceProfilesLoading={voiceProfilesLoading}
+          voiceProfilesError={voiceProfilesError}
+          selectedVoiceProfileId={selectedVoiceProfileId}
+          onVoiceProfileChange={onVoiceProfileChange}
+          onVoiceProfilesReload={onVoiceProfilesReload}
         />
       </FloatingWindow>
 

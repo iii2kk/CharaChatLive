@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 interface TtsRouteRequest {
   text: string;
+  voiceProfileId?: string | null;
   model?: {
     id: string;
     name: string;
@@ -9,9 +10,35 @@ interface TtsRouteRequest {
   };
 }
 
-function getBaseUrl(): string | null {
+type TtsProvider = "openai" | "irodori";
+
+function getBaseUrl(provider: TtsProvider): string | null {
   const value = process.env.LOCAL_TTS_BASE_URL?.trim();
-  return value ? value.replace(/\/$/, "") : null;
+  if (value) return value.replace(/\/$/, "");
+  return provider === "irodori" ? "http://localhost:8000" : null;
+}
+
+function getProvider(voiceProfileId?: string | null): TtsProvider {
+  const value = process.env.LOCAL_TTS_PROVIDER?.trim().toLowerCase();
+  if (value === "irodori") return "irodori";
+  if (value === "openai") return "openai";
+  return voiceProfileId ? "irodori" : "openai";
+}
+
+function optionalEnv(name: string): string | null {
+  const value = process.env[name]?.trim();
+  return value ? value : null;
+}
+
+function appendOptionalFormField(
+  formData: FormData,
+  field: string,
+  envName: string
+): void {
+  const value = optionalEnv(envName);
+  if (value !== null) {
+    formData.append(field, value);
+  }
 }
 
 function writeAscii(view: DataView, offset: number, value: string): void {
@@ -68,19 +95,10 @@ function debugResponse(payload: TtsRouteRequest): Response {
   });
 }
 
-export async function POST(request: Request) {
-  const payload = (await request.json()) as TtsRouteRequest;
-  const input = payload.text.trim();
-
-  if (!input) {
-    return Response.json({ error: "text is required" }, { status: 400 });
-  }
-
-  const baseUrl = getBaseUrl();
-  if (!baseUrl) {
-    return debugResponse(payload);
-  }
-
+async function requestOpenAiSpeech(
+  baseUrl: string,
+  input: string
+): Promise<Response> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -91,7 +109,7 @@ export async function POST(request: Request) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
 
-  const upstream = await fetch(`${baseUrl}/audio/speech`, {
+  return fetch(`${baseUrl}/audio/speech`, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -101,11 +119,114 @@ export async function POST(request: Request) {
       response_format: process.env.LOCAL_TTS_FORMAT?.trim() || "wav",
     }),
   });
+}
+
+async function requestIrodoriSpeech(
+  baseUrl: string,
+  input: string,
+  voiceProfileId: string | null | undefined
+): Promise<Response> {
+  const formData = new FormData();
+  formData.append("text", input);
+  formData.append("num_candidates", "1");
+
+  if (voiceProfileId) {
+    formData.append("voice_profile_id", voiceProfileId);
+  }
+
+  const noRef = optionalEnv("IRODORI_TTS_NO_REF");
+  if (noRef !== null) {
+    formData.append("no_ref", noRef);
+  } else if (!voiceProfileId) {
+    formData.append("no_ref", "true");
+  }
+
+  appendOptionalFormField(formData, "caption", "IRODORI_TTS_CAPTION");
+  appendOptionalFormField(formData, "seed", "IRODORI_TTS_SEED");
+  appendOptionalFormField(formData, "num_steps", "IRODORI_TTS_NUM_STEPS");
+  appendOptionalFormField(
+    formData,
+    "cfg_scale_text",
+    "IRODORI_TTS_CFG_SCALE_TEXT"
+  );
+  appendOptionalFormField(
+    formData,
+    "cfg_scale_caption",
+    "IRODORI_TTS_CFG_SCALE_CAPTION"
+  );
+  appendOptionalFormField(
+    formData,
+    "cfg_scale_speaker",
+    "IRODORI_TTS_CFG_SCALE_SPEAKER"
+  );
+  appendOptionalFormField(
+    formData,
+    "cfg_guidance_mode",
+    "IRODORI_TTS_CFG_GUIDANCE_MODE"
+  );
+  appendOptionalFormField(formData, "cfg_min_t", "IRODORI_TTS_CFG_MIN_T");
+  appendOptionalFormField(formData, "cfg_max_t", "IRODORI_TTS_CFG_MAX_T");
+  appendOptionalFormField(
+    formData,
+    "truncation_factor",
+    "IRODORI_TTS_TRUNCATION_FACTOR"
+  );
+  appendOptionalFormField(formData, "rescale_k", "IRODORI_TTS_RESCALE_K");
+  appendOptionalFormField(
+    formData,
+    "rescale_sigma",
+    "IRODORI_TTS_RESCALE_SIGMA"
+  );
+  appendOptionalFormField(
+    formData,
+    "context_kv_cache",
+    "IRODORI_TTS_CONTEXT_KV_CACHE"
+  );
+  appendOptionalFormField(
+    formData,
+    "speaker_kv_scale",
+    "IRODORI_TTS_SPEAKER_KV_SCALE"
+  );
+
+  const headers: Record<string, string> = {};
+  const apiKey = process.env.LOCAL_TTS_API_KEY?.trim();
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+
+  return fetch(`${baseUrl}/v1/audio/speech`, {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+}
+
+export async function POST(request: Request) {
+  const payload = (await request.json()) as TtsRouteRequest;
+  const input = payload.text.trim();
+
+  if (!input) {
+    return Response.json({ error: "text is required" }, { status: 400 });
+  }
+
+  const provider = getProvider(payload.voiceProfileId);
+  const baseUrl = getBaseUrl(provider);
+  if (!baseUrl) {
+    return debugResponse(payload);
+  }
+
+  const upstream =
+    provider === "irodori"
+      ? await requestIrodoriSpeech(baseUrl, input, payload.voiceProfileId)
+      : await requestOpenAiSpeech(baseUrl, input);
 
   if (!upstream.ok) {
     const text = await upstream.text().catch(() => "");
     return Response.json(
-      { error: text || `TTS upstream HTTP ${upstream.status}` },
+      {
+        error:
+          text || `${provider} TTS upstream HTTP ${upstream.status}`,
+      },
       { status: upstream.status || 502 }
     );
   }

@@ -39,6 +39,7 @@ import type {
   ChatTargetSnapshot,
   SpeechBubble,
 } from "@/types/chat";
+import type { VoiceProfile } from "@/types/tts";
 
 const CharacterViewer = dynamic(() => import("@/components/CharacterViewer"), {
   ssr: false,
@@ -133,6 +134,14 @@ export default function Home() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [speechBubbles, setSpeechBubbles] = useState<SpeechBubble[]>([]);
   const [chatSending, setChatSending] = useState(false);
+  const [voiceProfiles, setVoiceProfiles] = useState<VoiceProfile[]>([]);
+  const [voiceProfilesLoading, setVoiceProfilesLoading] = useState(false);
+  const [voiceProfilesError, setVoiceProfilesError] = useState<string | null>(
+    null
+  );
+  const [selectedVoiceProfileIds, setSelectedVoiceProfileIds] = useState<
+    Record<string, string | null>
+  >({});
   const bubbleUpdateTimesRef = useRef<Map<string, number>>(new Map());
   const ttsAudioUrlsRef = useRef<Map<string, () => void>>(new Map());
 
@@ -148,6 +157,30 @@ export default function Home() {
       prev.forEach((url) => URL.revokeObjectURL(url));
       return [];
     });
+  }, []);
+
+  const reloadVoiceProfiles = useCallback(async () => {
+    setVoiceProfilesLoading(true);
+    setVoiceProfilesError(null);
+    try {
+      const response = await fetch("/api/tts/voice-profiles", {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const profiles = (await response.json()) as VoiceProfile[];
+      setVoiceProfiles(profiles);
+    } catch (error) {
+      setVoiceProfilesError(
+        error instanceof Error
+          ? error.message
+          : "音声プロファイルの取得に失敗しました"
+      );
+      setVoiceProfiles([]);
+    } finally {
+      setVoiceProfilesLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -167,7 +200,8 @@ export default function Home() {
       .then((res) => res.json())
       .then((data: PresetMotion[]) => setPresetMotions(data))
       .catch(() => {});
-  }, []);
+    void reloadVoiceProfiles();
+  }, [reloadVoiceProfiles]);
 
   const presetMotionsByKindRef = useCallback(
     (modelKind: "mmd" | "vrm" | "live2d"): PresetMotion[] => {
@@ -430,7 +464,9 @@ export default function Home() {
       previousRevoke?.();
       ttsAudioUrlsRef.current.delete(target.id);
 
-      const audioUrl = await synthesizeSpeechUrl(target, trimmed);
+      const audioUrl = await synthesizeSpeechUrl(target, trimmed, {
+        voiceProfileId: selectedVoiceProfileIds[target.id] ?? null,
+      });
       ttsAudioUrlsRef.current.set(target.id, audioUrl.revoke);
 
       const audio = await playLipSyncAudio(target.id, audioUrl.url);
@@ -452,7 +488,7 @@ export default function Home() {
       audio.addEventListener("ended", cleanup);
       audio.addEventListener("error", cleanup);
     },
-    [playLipSyncAudio]
+    [playLipSyncAudio, selectedVoiceProfileIds]
   );
 
   const runModelChatStream = useCallback(
@@ -585,6 +621,16 @@ export default function Home() {
     [upsertSpeechBubble]
   );
 
+  const handleVoiceProfileChange = useCallback(
+    (modelId: string, profileId: string | null) => {
+      setSelectedVoiceProfileIds((prev) => ({
+        ...prev,
+        [modelId]: profileId,
+      }));
+    },
+    []
+  );
+
   return (
     <div className="h-full w-full relative">
       <div className="h-full w-full">
@@ -654,6 +700,14 @@ export default function Home() {
         chatMessages={chatMessages}
         onSpeechBubbleDebugShow={handleSpeechBubbleDebugShow}
         onSpeechBubbleDebugClear={clearSpeechBubble}
+        voiceProfiles={voiceProfiles}
+        voiceProfilesLoading={voiceProfilesLoading}
+        voiceProfilesError={voiceProfilesError}
+        selectedVoiceProfileId={
+          activeModelId ? selectedVoiceProfileIds[activeModelId] ?? null : null
+        }
+        onVoiceProfileChange={handleVoiceProfileChange}
+        onVoiceProfilesReload={reloadVoiceProfiles}
       />
       <ChatInputBar
         targetMode={chatTargetMode}

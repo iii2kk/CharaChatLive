@@ -12,6 +12,77 @@ npm run dev
 
 ブラウザで `http://localhost:3000` を開いて確認します。
 
+### 環境変数
+
+Next.js が読み込む `.env` または `.env.local` に設定します。共有用の雛形は `.env.example` です。
+
+#### ローカルLLM
+
+チャット応答は OpenAI 互換の `/chat/completions` に `stream: true` で中継します。
+
+```env
+LOCAL_LLM_BASE_URL=http://localhost:1234/v1
+LOCAL_LLM_MODEL=local-model
+LOCAL_LLM_API_KEY=
+```
+
+未設定の場合はUI確認用の疑似stream応答を返します。
+
+#### TTS共通
+
+```env
+LOCAL_TTS_PROVIDER=irodori
+LOCAL_TTS_BASE_URL=http://localhost:8000
+LOCAL_TTS_API_KEY=
+```
+
+- `LOCAL_TTS_PROVIDER`: `irodori` または `openai`
+- `LOCAL_TTS_BASE_URL`: TTSサーバーのベースURL
+- `LOCAL_TTS_API_KEY`: 必要な場合のみ。Irodori-TTS / OpenAI互換TTSのリクエストに `Bearer` として付与
+
+#### Irodori-TTS
+
+`LOCAL_TTS_PROVIDER=irodori` の場合、`POST /v1/audio/speech` に `multipart/form-data` で送信します。`LOCAL_TTS_BASE_URL` を省略した場合は `http://localhost:8000` を使います。
+
+```env
+LOCAL_TTS_PROVIDER=irodori
+LOCAL_TTS_BASE_URL=http://localhost:8000
+LOCAL_TTS_PROFILE_BASE_URL=http://localhost:8000
+```
+
+音声プロファイルは `GET /v1/voice-profiles` から取得し、「リップシンク」ウインドウでモデルごとに選択できます。選択したプロファイルはTTS時に `voice_profile_id` として送信されます。
+
+Irodori-TTS の任意パラメータ:
+
+```env
+IRODORI_TTS_CAPTION=落ち着いた声で、近い距離感で自然に
+IRODORI_TTS_NO_REF=true
+IRODORI_TTS_SEED=1234
+IRODORI_TTS_NUM_STEPS=40
+IRODORI_TTS_CFG_SCALE_TEXT=3.0
+IRODORI_TTS_CFG_SCALE_CAPTION=3.0
+IRODORI_TTS_CFG_SCALE_SPEAKER=5.0
+IRODORI_TTS_CFG_GUIDANCE_MODE=independent
+IRODORI_TTS_CFG_MIN_T=0.5
+IRODORI_TTS_CFG_MAX_T=1.0
+IRODORI_TTS_CONTEXT_KV_CACHE=true
+```
+
+`voice_profile_id` を使う場合、`IRODORI_TTS_NO_REF` を未設定にしておくと、プロファイル側の参照音声やcaption設定を優先します。
+
+#### OpenAI互換TTS
+
+`LOCAL_TTS_PROVIDER=openai` の場合、`POST /audio/speech` にJSONで送信します。
+
+```env
+LOCAL_TTS_PROVIDER=openai
+LOCAL_TTS_BASE_URL=http://localhost:5050/v1
+LOCAL_TTS_MODEL=tts-1
+LOCAL_TTS_VOICE=alloy
+LOCAL_TTS_FORMAT=wav
+LOCAL_TTS_API_KEY=
+```
+
 ## 使い方
 
 ### 画面構成

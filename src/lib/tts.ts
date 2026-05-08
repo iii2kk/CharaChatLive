@@ -7,7 +7,8 @@ export interface TtsAudioUrl {
 
 export async function synthesizeSpeechUrl(
   model: ChatTargetSnapshot,
-  text: string
+  text: string,
+  options?: { voiceProfileId?: string | null }
 ): Promise<TtsAudioUrl> {
   const response = await fetch("/api/tts", {
     method: "POST",
@@ -15,6 +16,7 @@ export async function synthesizeSpeechUrl(
     body: JSON.stringify({
       model,
       text,
+      voiceProfileId: options?.voiceProfileId ?? null,
     }),
   });
 
