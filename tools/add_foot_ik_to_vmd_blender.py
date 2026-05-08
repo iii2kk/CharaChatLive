@@ -21,6 +21,7 @@ The default scales match mmd_tools: import VMD at 0.08, export VMD at 12.5.
 from __future__ import annotations
 
 import argparse
+import struct
 import sys
 from pathlib import Path
 
@@ -35,6 +36,11 @@ FOOT_IK_PAIRS = {
     "右足ＩＫ": "右足首",
     "左つま先ＩＫ": "左つま先",
     "右つま先ＩＫ": "右つま先",
+}
+
+CHILD_IK_PARENTS = {
+    "左つま先ＩＫ": "左足ＩＫ",
+    "右つま先ＩＫ": "右足ＩＫ",
 }
 
 
@@ -71,6 +77,12 @@ def parse_args() -> argparse.Namespace:
         choices=("none", "ankle", "leg", "leg-and-toe"),
         default="none",
         help="Remove original FK leg rotation curves after baking IK keys.",
+    )
+    parser.add_argument(
+        "--fix-child-ik-local",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Rewrite toe IK VMD positions as local offsets from foot IK.",
     )
     return parser.parse_args(argv)
 
@@ -192,9 +204,22 @@ def insert_ik_keys(
     start: int,
     end: int,
 ) -> None:
+    parent_ik_names = [name for name in FOOT_IK_PAIRS if name not in CHILD_IK_PARENTS]
+    child_ik_names = [name for name in FOOT_IK_PAIRS if name in CHILD_IK_PARENTS]
     for frame in range(start, end + 1):
         bpy.context.scene.frame_set(frame)
-        for ik_name, matrix in samples[frame].items():
+        for ik_name in parent_ik_names:
+            matrix = samples[frame][ik_name]
+            pb = arm.pose.bones.get(ik_name)
+            if pb is None:
+                raise RuntimeError(f"Missing IK target bone: {ik_name}")
+            pb.rotation_mode = "QUATERNION"
+            pb.matrix = matrix
+            pb.keyframe_insert("location", frame=frame)
+            pb.keyframe_insert("rotation_quaternion", frame=frame)
+        bpy.context.view_layer.update()
+        for ik_name in child_ik_names:
+            matrix = samples[frame][ik_name]
             pb = arm.pose.bones.get(ik_name)
             if pb is None:
                 raise RuntimeError(f"Missing IK target bone: {ik_name}")
@@ -261,6 +286,48 @@ def filter_vmd_bone_records(path: Path, removed_bones: set[str]) -> None:
     patched.extend(data[records_end:])
     path.write_bytes(patched)
     print(f"[add_foot_ik] filtered_vmd_bones={removed} path={path}")
+
+
+def fix_child_ik_local_positions(path: Path) -> None:
+    data = bytearray(path.read_bytes())
+    header_size = 30 + 20
+    record_size = 15 + 4 + 12 + 16 + 64
+    if len(data) < header_size + 4:
+        raise RuntimeError(f"VMD file is too small: {path}")
+
+    count = int.from_bytes(data[header_size : header_size + 4], "little")
+    records_start = header_size + 4
+    records_end = records_start + count * record_size
+    if len(data) < records_end:
+        raise RuntimeError(f"VMD bone records are truncated: {path}")
+
+    positions: dict[tuple[str, int], tuple[float, float, float]] = {}
+    for index in range(count):
+        start = records_start + index * record_size
+        name = decode_vmd_name(bytes(data[start : start + 15]))
+        if name not in FOOT_IK_PAIRS:
+            continue
+        frame = int.from_bytes(data[start + 15 : start + 19], "little")
+        positions[(name, frame)] = struct.unpack_from("<3f", data, start + 19)
+
+    patched = 0
+    for index in range(count):
+        start = records_start + index * record_size
+        name = decode_vmd_name(bytes(data[start : start + 15]))
+        parent_name = CHILD_IK_PARENTS.get(name)
+        if parent_name is None:
+            continue
+        frame = int.from_bytes(data[start + 15 : start + 19], "little")
+        child_pos = positions.get((name, frame))
+        parent_pos = positions.get((parent_name, frame))
+        if child_pos is None or parent_pos is None:
+            continue
+        local_pos = tuple(child_pos[i] - parent_pos[i] for i in range(3))
+        struct.pack_into("<3f", data, start + 19, *local_pos)
+        patched += 1
+
+    path.write_bytes(data)
+    print(f"[add_foot_ik] fixed_child_ik_local_positions={patched} path={path}")
 
 
 def fk_bones_to_clear(mode: str) -> list[str]:
@@ -331,6 +398,8 @@ def main() -> None:
     out_path = Path(args.out).resolve()
     export_vmd(arm, out_path, args.export_scale)
     filter_vmd_bone_records(out_path, set(fk_bones_to_clear(args.clear_fk)))
+    if args.fix_child_ik_local:
+        fix_child_ik_local_positions(out_path)
     print(f"[add_foot_ik] wrote {out_path}")
 
 

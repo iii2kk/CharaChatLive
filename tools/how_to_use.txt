@@ -1,0 +1,10 @@
+sample
+
+& "C:\Program Files\Blender Foundation\Blender 5.1\blender.exe" --background `
+  --python tools\add_foot_ik_to_vmd_blender.py -- `
+  --pmx public\models\Alicia\Alicia_solid.pmx `
+  --vmd "public\motions\vmd\base\Fast Run_アリシア・ソリッド.vmd" `
+  --out "public\motions\vmd\base\Fast Run_アリシア・ソリッド_ik_ordered.vmd" `
+  --ik-rotation none `
+  --target-offset rest `
+  --clear-fk none
