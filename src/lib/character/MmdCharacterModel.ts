@@ -423,7 +423,10 @@ export class MmdCharacterModel implements CharacterModel {
     if (needsNewHelper) {
       const helper = new MMDAnimationHelper({
         afterglow: 2.0,
-        resetPhysicsOnLoop: true,
+        // Resetting physics on every animation loop snaps hair/skirt rigid
+        // bodies back to the current bone pose. Let the simulation continue so
+        // looped walk cycles keep their secondary motion.
+        resetPhysicsOnLoop: false,
       });
 
       // 前回の物理計算で変形したボーンを次の VMD の初期状態に持ち越さない。
