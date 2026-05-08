@@ -11,6 +11,7 @@ import type {
 
 interface MotionControlWindowProps {
   activeModel: CharacterModel | null;
+  onMappingChange?: (model: CharacterModel) => void;
 }
 
 const MOTION_MAPPING_KEYS: readonly MotionMappingKey[] = ["idle", "walk", "run"];
@@ -28,6 +29,7 @@ function formatDuration(sec: number | null): string {
 
 export default function MotionControlWindow({
   activeModel,
+  onMappingChange,
 }: MotionControlWindowProps) {
   const [, setTick] = useState(0);
   const forceUpdate = () => setTick((t) => t + 1);
@@ -209,6 +211,7 @@ export default function MotionControlWindow({
                         );
                       }
                       forceUpdate();
+                      onMappingChange?.(activeModel);
                     }}
                     className="rounded bg-gray-900 px-1 py-0.5 text-gray-200"
                   >

@@ -101,6 +101,7 @@ interface FloatingWindowOverlayProps {
   selectedVoiceProfileId: string | null;
   onVoiceProfileChange: (modelId: string, profileId: string | null) => void;
   onVoiceProfilesReload: () => void;
+  onModelSettingsChange: (model: CharacterModel) => void;
 }
 
 /** Content window IDs (all except menu) */
@@ -157,6 +158,7 @@ export default function FloatingWindowOverlay({
   selectedVoiceProfileId,
   onVoiceProfileChange,
   onVoiceProfilesReload,
+  onModelSettingsChange,
 }: FloatingWindowOverlayProps) {
   const {
     windowStates,
@@ -378,7 +380,10 @@ export default function FloatingWindowOverlay({
         onFocus={() => bringToFront("expressionControl")}
         onClose={() => closeWindow("expressionControl")}
       >
-        <ExpressionControlWindow activeModel={activeModel} />
+        <ExpressionControlWindow
+          activeModel={activeModel}
+          onMappingChange={onModelSettingsChange}
+        />
       </FloatingWindow>
 
       {/* Motion Control */}
@@ -391,7 +396,10 @@ export default function FloatingWindowOverlay({
         onFocus={() => bringToFront("motionControl")}
         onClose={() => closeWindow("motionControl")}
       >
-        <MotionControlWindow activeModel={activeModel} />
+        <MotionControlWindow
+          activeModel={activeModel}
+          onMappingChange={onModelSettingsChange}
+        />
       </FloatingWindow>
 
       {/* Movement Control */}

@@ -12,7 +12,11 @@ import type { ViewerSettings } from "@/lib/viewer-settings";
 
 interface LoadModelOptions {
   name?: string;
-  onLoaded?: (modelId: string, modelKind: ModelKind) => void;
+  onLoaded?: (
+    modelId: string,
+    modelKind: ModelKind,
+    model: CharacterModel
+  ) => void;
   /** PMX 専用。T ポーズモデルを A ポーズへ補正して VMD を再生する。 */
   tPoseCorrection?: {
     enabled: boolean;
@@ -145,7 +149,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
           commitModels(nextModels);
           setActiveModelId(modelId);
           setLoading(false);
-          options?.onLoaded?.(modelId, model.kind);
+          options?.onLoaded?.(modelId, model.kind, model);
         })
         .catch((err) => {
           console.error("model load error:", err);
@@ -204,7 +208,7 @@ export function useModelLoader(viewerSettings: ViewerSettings) {
           commitModels(nextModels);
           setActiveModelId(modelId);
           setLoading(false);
-          options?.onLoaded?.(modelId, model.kind);
+          options?.onLoaded?.(modelId, model.kind, model);
         })
         .catch((err) => {
           console.error("model load error:", err);

@@ -71,11 +71,13 @@ const FRONT_TARGET_MAX_DISTANCE = 50;
 const FRONT_TARGET_MAX_ANGLE_RAD = THREE.MathUtils.degToRad(20);
 const NEARBY_TARGET_MAX_DISTANCE = 40;
 const SPEECH_BUBBLE_VERTICAL_OFFSET = 0.45;
+const SPEECH_BUBBLE_SCREEN_PADDING = 16;
 const tmpChatForward = new THREE.Vector3();
 const tmpChatCenter = new THREE.Vector3();
 const tmpChatDirection = new THREE.Vector3();
 const tmpChatBox = new THREE.Box3();
 const tmpBubbleBox = new THREE.Box3();
+const tmpBubbleScreenPosition = new THREE.Vector3();
 
 interface PlacementFootprint {
   position: THREE.Vector3;
@@ -330,6 +332,34 @@ function shortenBubbleText(text: string): string {
   return `...${normalized.slice(-77)}`;
 }
 
+function clampCenteredHtmlPosition(
+  position: [number, number],
+  element: HTMLElement | null,
+  size: { width: number; height: number },
+  padding: number
+): [number, number] {
+  if (!element) return position;
+
+  const rect = element.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return position;
+
+  const halfWidth = rect.width / 2;
+  const halfHeight = rect.height / 2;
+  const minX = padding + halfWidth;
+  const maxX = size.width - padding - halfWidth;
+  const minY = padding + halfHeight;
+  const maxY = size.height - padding - halfHeight;
+
+  return [
+    minX <= maxX
+      ? THREE.MathUtils.clamp(position[0], minX, maxX)
+      : size.width / 2,
+    minY <= maxY
+      ? THREE.MathUtils.clamp(position[1], minY, maxY)
+      : size.height / 2,
+  ];
+}
+
 function SpeechBubbleAnchor({
   model,
   bubble,
@@ -338,6 +368,30 @@ function SpeechBubbleAnchor({
   bubble: SpeechBubble;
 }) {
   const groupRef = useRef<THREE.Group | null>(null);
+  const bubbleElementRef = useRef<HTMLDivElement | null>(null);
+  const calculateBubblePosition = useCallback(
+    (
+      object: THREE.Object3D,
+      camera: THREE.Camera,
+      size: { width: number; height: number }
+    ): [number, number] => {
+      tmpBubbleScreenPosition.setFromMatrixPosition(object.matrixWorld);
+      tmpBubbleScreenPosition.project(camera);
+
+      const position: [number, number] = [
+        (tmpBubbleScreenPosition.x * size.width) / 2 + size.width / 2,
+        (-tmpBubbleScreenPosition.y * size.height) / 2 + size.height / 2,
+      ];
+
+      return clampCenteredHtmlPosition(
+        position,
+        bubbleElementRef.current,
+        size,
+        SPEECH_BUBBLE_SCREEN_PADDING
+      );
+    },
+    []
+  );
 
   useFrame(() => {
     const group = groupRef.current;
@@ -364,8 +418,17 @@ function SpeechBubbleAnchor({
 
   return (
     <group ref={groupRef}>
-      <Html center distanceFactor={30} occlude={false} zIndexRange={[50, 0]}>
-        <div className="w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-gray-200/80 bg-white/95 px-4 py-3 text-center text-base leading-relaxed text-gray-950 shadow-xl">
+      <Html
+        center
+        distanceFactor={30}
+        occlude={false}
+        zIndexRange={[50, 0]}
+        calculatePosition={calculateBubblePosition}
+      >
+        <div
+          ref={bubbleElementRef}
+          className="w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-gray-200/80 bg-white/95 px-4 py-3 text-center text-base leading-relaxed text-gray-950 shadow-xl"
+        >
           <div className="whitespace-pre-wrap break-words">
             {shortenBubbleText(bubble.text)}
             {bubble.status === "streaming" ? (

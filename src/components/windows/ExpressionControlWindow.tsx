@@ -11,6 +11,7 @@ import {
 
 interface ExpressionControlWindowProps {
   activeModel: CharacterModel | null;
+  onMappingChange?: (model: CharacterModel) => void;
 }
 
 const CATEGORY_LABEL: Record<ExpressionCategory, string> = {
@@ -40,6 +41,7 @@ const SEMANTIC_LABEL: Record<SemanticExpressionKey, string> = {
 
 export default function ExpressionControlWindow({
   activeModel,
+  onMappingChange,
 }: ExpressionControlWindowProps) {
   const [, setTick] = useState(0);
   const forceUpdate = () => setTick((t) => t + 1);
@@ -158,6 +160,7 @@ export default function ExpressionControlWindow({
                               const next = e.currentTarget.value || null;
                               activeModel.expressionMapping.set(semanticKey, next);
                               forceUpdate();
+                              onMappingChange?.(activeModel);
                             }}
                             className="rounded bg-gray-900 px-1 py-0.5 text-gray-200"
                           >
@@ -196,6 +199,8 @@ export default function ExpressionControlWindow({
                                   null
                                 );
                               }
+                              forceUpdate();
+                              onMappingChange?.(activeModel);
                             }}
                             className="rounded bg-gray-900 px-1 py-0.5 text-gray-200"
                           >

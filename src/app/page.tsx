@@ -7,7 +7,7 @@ import ChatInputBar from "@/components/ChatInputBar";
 import type { ModelEntry, ModelFile } from "@/types/models";
 import type { PresetMotion } from "@/types/motions";
 import type { TexturePresets } from "@/types/textures";
-import { useModelLoader } from "@/hooks/useModelLoader";
+import { useModelLoader, type CharacterModel } from "@/hooks/useModelLoader";
 import { useSceneObjects } from "@/hooks/useSceneObjects";
 import { useCharacterMovement } from "@/hooks/useCharacterMovement";
 import { useLipSync } from "@/hooks/useLipSync";
@@ -31,6 +31,15 @@ import {
 } from "@/lib/scene-lights";
 import { streamChatResponse } from "@/lib/chat-stream";
 import { synthesizeSpeechUrl } from "@/lib/tts";
+import {
+  MODEL_SETTINGS_EXPRESSION_KEYS,
+  MODEL_SETTINGS_MOTION_KEYS,
+  MODEL_SETTINGS_SCHEMA_VERSION,
+  normalizeModelSettings,
+  type ModelSettings,
+  type ModelSettingsExpressionMapping,
+  type ModelSettingsMotionMapping,
+} from "@/lib/model-settings";
 import type {
   ChatMessage,
   ChatSendPayload,
@@ -63,6 +72,98 @@ function createBubbleId(modelId: string) {
 
 function shouldRespond(): boolean {
   return true;
+}
+
+function isValidExpressionMappingValue(
+  model: CharacterModel,
+  key: keyof ModelSettingsExpressionMapping,
+  value: string | null
+): boolean {
+  if (value === null) return true;
+  const options = model.expressionMapping.getOptions?.(key) ?? [];
+  if (options.length > 0) {
+    return options.some((option) => option.value === value);
+  }
+  return model.expressions.has(value);
+}
+
+function applyModelSettings(model: CharacterModel, settings: ModelSettings): void {
+  if (settings.expressionMapping) {
+    for (const key of MODEL_SETTINGS_EXPRESSION_KEYS) {
+      const value = settings.expressionMapping[key];
+      if (value === undefined) continue;
+      if (!isValidExpressionMappingValue(model, key, value)) continue;
+      model.expressionMapping.set(key, value);
+    }
+  }
+
+  if (settings.motionMapping) {
+    const handleByName = new Map<string, string>();
+    for (const handle of model.animation.library.list()) {
+      try {
+        const info = model.animation.library.getInfo(handle);
+        handleByName.set(info.name, handle.id);
+      } catch {
+        // Skip disposed or unreadable handles.
+      }
+    }
+
+    for (const key of MODEL_SETTINGS_MOTION_KEYS) {
+      const motionName = settings.motionMapping[key];
+      if (motionName === undefined) continue;
+      model.motionMapping.set(
+        key,
+        motionName === null ? null : handleByName.get(motionName) ?? null
+      );
+    }
+  }
+}
+
+function snapshotMotionMapping(model: CharacterModel): ModelSettingsMotionMapping {
+  const nameByHandleId = new Map<string, string>();
+  for (const handle of model.animation.library.list()) {
+    try {
+      const info = model.animation.library.getInfo(handle);
+      nameByHandleId.set(handle.id, info.name);
+    } catch {
+      // Skip disposed or unreadable handles.
+    }
+  }
+
+  const mapping: ModelSettingsMotionMapping = {};
+  for (const key of MODEL_SETTINGS_MOTION_KEYS) {
+    const handleId = model.motionMapping[key];
+    mapping[key] = handleId ? nameByHandleId.get(handleId) ?? null : null;
+  }
+  return mapping;
+}
+
+async function loadPresetModelSettings(
+  modelPath: string
+): Promise<ModelSettings | null> {
+  try {
+    const response = await fetch(
+      `/api/model-settings?modelPath=${encodeURIComponent(modelPath)}`,
+      { cache: "no-store" }
+    );
+    if (!response.ok) return null;
+    const data = (await response.json()) as { settings?: unknown };
+    return normalizeModelSettings(data.settings, modelPath);
+  } catch (error) {
+    console.error("[model-settings] load failed:", error);
+    return null;
+  }
+}
+
+async function savePresetModelSettings(settings: ModelSettings): Promise<void> {
+  const response = await fetch("/api/model-settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+  if (!response.ok) {
+    throw new Error(`model settings HTTP ${response.status}`);
+  }
 }
 
 export default function Home() {
@@ -142,6 +243,7 @@ export default function Home() {
   const [selectedVoiceProfileIds, setSelectedVoiceProfileIds] = useState<
     Record<string, string | null>
   >({});
+  const presetModelPathsRef = useRef<Map<string, string>>(new Map());
   const bubbleUpdateTimesRef = useRef<Map<string, number>>(new Map());
   const ttsAudioUrlsRef = useRef<Map<string, () => void>>(new Map());
 
@@ -224,7 +326,7 @@ export default function Home() {
         name: m.name,
         sortIndex: index,
       }));
-      void registerPresetMotions(modelId, items);
+      return registerPresetMotions(modelId, items);
     },
     [presetMotionsByKindRef, registerPresetMotions]
   );
@@ -273,18 +375,57 @@ export default function Home() {
     };
   }, [interactionMode]);
 
+  const persistPresetModelSettings = useCallback(
+    (model: CharacterModel, voiceProfileId?: string | null) => {
+      const modelPath = presetModelPathsRef.current.get(model.id);
+      if (!modelPath) return;
+
+      const settings: ModelSettings = {
+        schemaVersion: MODEL_SETTINGS_SCHEMA_VERSION,
+        modelPath,
+        updatedAt: new Date().toISOString(),
+        motionMapping: snapshotMotionMapping(model),
+        expressionMapping: model.expressionMapping.toJSON(),
+        voiceProfileId:
+          voiceProfileId !== undefined
+            ? voiceProfileId
+            : selectedVoiceProfileIds[model.id] ?? null,
+      };
+
+      void savePresetModelSettings(settings).catch((error) => {
+        console.error("[model-settings] save failed:", error);
+      });
+    },
+    [selectedVoiceProfileIds]
+  );
+
   const handlePresetSelected = useCallback(
     (
       file: ModelFile,
       options?: { tPoseCorrection?: { enabled: boolean; armAngleDeg?: number } }
     ) => {
       clearAnimationUrls();
-      loadModelFromPath(file.path, {
-        name: file.name,
-        tPoseCorrection: options?.tPoseCorrection,
-        onLoaded: (modelId, modelKind) => {
-          attachPresetMotions(modelId, modelKind);
-        },
+      void loadPresetModelSettings(file.path).then((settings) => {
+        loadModelFromPath(file.path, {
+          name: file.name,
+          tPoseCorrection: options?.tPoseCorrection,
+          onLoaded: (modelId, modelKind, model) => {
+            presetModelPathsRef.current.set(modelId, file.path);
+            void (async () => {
+              await attachPresetMotions(modelId, modelKind);
+              if (!settings) return;
+              applyModelSettings(model, settings);
+              if ("voiceProfileId" in settings) {
+                setSelectedVoiceProfileIds((prev) => ({
+                  ...prev,
+                  [modelId]: settings.voiceProfileId ?? null,
+                }));
+              }
+            })().catch((error) => {
+              console.error("[model-settings] restore failed:", error);
+            });
+          },
+        });
       });
       setLastSelectedKind("model");
     },
@@ -356,7 +497,7 @@ export default function Home() {
       loadModel(modelEntry.kind, modelEntry.url, fileMap, {
         name: modelEntry.name,
         onLoaded: (modelId, modelKind) => {
-          attachPresetMotions(modelId, modelKind);
+          void attachPresetMotions(modelId, modelKind);
           if (animationUrls.length > 0) {
             loadAnimation(animationKind, animationUrls, modelId);
           }
@@ -627,8 +768,26 @@ export default function Home() {
         ...prev,
         [modelId]: profileId,
       }));
+      const model = models.find((item) => item.id === modelId);
+      if (model) {
+        persistPresetModelSettings(model, profileId);
+      }
     },
-    []
+    [models, persistPresetModelSettings]
+  );
+
+  const handleRemoveModel = useCallback(
+    (modelId: string) => {
+      presetModelPathsRef.current.delete(modelId);
+      setSelectedVoiceProfileIds((prev) => {
+        if (!(modelId in prev)) return prev;
+        const next = { ...prev };
+        delete next[modelId];
+        return next;
+      });
+      removeModel(modelId);
+    },
+    [removeModel]
   );
 
   return (
@@ -679,7 +838,7 @@ export default function Home() {
         activeModelId={activeModelId}
         onActiveModelChange={handleActiveModelChange}
         onFocusModel={handleFocusModel}
-        onRemoveModel={removeModel}
+        onRemoveModel={handleRemoveModel}
         loading={loading}
         error={error}
         modelName={activeModel?.name ?? null}
@@ -708,6 +867,7 @@ export default function Home() {
         }
         onVoiceProfileChange={handleVoiceProfileChange}
         onVoiceProfilesReload={reloadVoiceProfiles}
+        onModelSettingsChange={persistPresetModelSettings}
       />
       <ChatInputBar
         targetMode={chatTargetMode}
