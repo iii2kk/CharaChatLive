@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import ScrollArea from "@/components/ScrollArea";
 
 type WindowPosition = { x: number; y: number };
@@ -46,6 +46,10 @@ export default function FloatingWindow({
   onMinimizeToggle,
 }: FloatingWindowProps) {
   const windowRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [renderPosition, setRenderPosition] = useState(position);
+  const [syncedPosition, setSyncedPosition] = useState(position);
+  const renderPositionRef = useRef(position);
   const dragRef = useRef<{
     active: boolean;
     pointerId: number;
@@ -55,23 +59,53 @@ export default function FloatingWindow({
     originY: number;
   } | null>(null);
 
+  if (!dragging && !isSamePosition(syncedPosition, position)) {
+    setSyncedPosition(position);
+    setRenderPosition(position);
+  }
+
+  const updateRenderedPosition = useCallback((next: WindowPosition) => {
+    renderPositionRef.current = next;
+    setRenderPosition((current) => (isSamePosition(current, next) ? current : next));
+
+    const element = windowRef.current;
+    if (element) {
+      element.style.left = `${next.x}px`;
+      element.style.top = `${next.y}px`;
+    }
+  }, []);
+
   const clampAndCommitPosition = useCallback(() => {
     const element = windowRef.current;
     if (!element) return;
 
-    const clamped = clampPosition(position, element);
-    element.style.left = `${clamped.x}px`;
-    element.style.top = `${clamped.y}px`;
+    const current = renderPositionRef.current;
+    const clamped = clampPosition(current, element);
+    updateRenderedPosition(clamped);
 
-    if (!isSamePosition(position, clamped)) {
+    if (!dragRef.current?.active && !isSamePosition(current, clamped)) {
       onPositionChange(clamped);
     }
-  }, [onPositionChange, position]);
+  }, [onPositionChange, updateRenderedPosition]);
 
   useLayoutEffect(() => {
     if (!visible) return;
 
-    clampAndCommitPosition();
+    const element = windowRef.current;
+    if (!element) return;
+
+    const clamped = clampPosition(renderPosition, element);
+    renderPositionRef.current = clamped;
+    element.style.left = `${clamped.x}px`;
+    element.style.top = `${clamped.y}px`;
+
+    if (!dragging && !isSamePosition(renderPosition, clamped)) {
+      onPositionChange(clamped);
+    }
+  }, [dragging, onPositionChange, renderPosition, visible]);
+
+  useLayoutEffect(() => {
+    if (!visible) return;
 
     const element = windowRef.current;
     if (!element) return;
@@ -105,11 +139,12 @@ export default function FloatingWindow({
         pointerId: e.pointerId,
         startX: e.clientX,
         startY: e.clientY,
-        originX: position.x,
-        originY: position.y,
+        originX: renderPositionRef.current.x,
+        originY: renderPositionRef.current.y,
       };
+      setDragging(true);
     },
-    [position.x, position.y]
+    []
   );
 
   const handlePointerMove = useCallback(
@@ -123,11 +158,10 @@ export default function FloatingWindow({
           { x: drag.originX + dx, y: drag.originY + dy },
           windowRef.current
         );
-        windowRef.current.style.left = `${next.x}px`;
-        windowRef.current.style.top = `${next.y}px`;
+        updateRenderedPosition(next);
       }
     },
-    []
+    [updateRenderedPosition]
   );
 
   const handlePointerUp = useCallback(
@@ -143,9 +177,11 @@ export default function FloatingWindow({
         ? clampPosition({ x: drag.originX + dx, y: drag.originY + dy }, windowRef.current)
         : { x: drag.originX + dx, y: drag.originY + dy };
       dragRef.current = null;
+      updateRenderedPosition(next);
+      setDragging(false);
       onPositionChange(next);
     },
-    [onPositionChange]
+    [onPositionChange, updateRenderedPosition]
   );
 
   if (!visible) return null;
@@ -154,7 +190,12 @@ export default function FloatingWindow({
     <div
       ref={windowRef}
       className="fixed pointer-events-auto bg-gray-900/95 border border-gray-700 rounded-lg shadow-xl backdrop-blur-sm text-gray-100"
-      style={{ left: position.x, top: position.y, zIndex, maxWidth: "100vw" }}
+      style={{
+        left: renderPosition.x,
+        top: renderPosition.y,
+        zIndex,
+        maxWidth: "100vw",
+      }}
       onPointerDownCapture={handleFocusPointerDown}
     >
       {/* Title bar */}
