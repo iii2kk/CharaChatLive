@@ -36,6 +36,7 @@ Design notes (why this works where the previous attempt did not):
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -46,27 +47,39 @@ BLENDER_MMD_TOOLS = "bl_ext.blender_org.mmd_tools"
 VMD_FPS = 30.0
 
 # Mixamo bone (without the "mixamorig:" prefix) -> MMD bone, FK rotation.
+# mode "align": match the source bone's world direction exactly (rest
+#   directions are aligned first; needed for arms where Mixamo's T-pose and
+#   the PMX A-pose disagree by ~35 deg).
+# mode "delta": transfer only the world rotation delta from the source's
+#   bind pose, keeping the target's natural rest posture. Used for the trunk:
+#   the Mixamo skeleton's bind pose has its spine chain tilted ~7-8.5 deg
+#   backward (a skeleton convention absorbed by its mesh), and "align" would
+#   transplant that tilt onto the PMX model as a visible backward lean.
 FK_MAP = [
-    ("Hips", "下半身"),
-    ("Spine1", "上半身"),
-    ("Spine2", "上半身2"),
-    ("Neck", "首"),
-    ("Head", "頭"),
-    ("LeftShoulder", "左肩"),
-    ("LeftArm", "左腕"),
-    ("LeftForeArm", "左ひじ"),
-    ("LeftHand", "左手首"),
-    ("RightShoulder", "右肩"),
-    ("RightArm", "右腕"),
-    ("RightForeArm", "右ひじ"),
-    ("RightHand", "右手首"),
-    ("LeftUpLeg", "左足"),
-    ("LeftLeg", "左ひざ"),
-    ("LeftFoot", "左足首"),
-    ("RightUpLeg", "右足"),
-    ("RightLeg", "右ひざ"),
-    ("RightFoot", "右足首"),
+    ("Hips", "下半身", "delta"),
+    ("Spine1", "上半身", "delta"),
+    ("Spine2", "上半身2", "delta"),
+    ("Neck", "首", "delta"),
+    ("Head", "頭", "delta"),
+    ("LeftShoulder", "左肩", "align"),
+    ("LeftArm", "左腕", "align"),
+    ("LeftForeArm", "左ひじ", "align"),
+    ("LeftHand", "左手首", "align"),
+    ("RightShoulder", "右肩", "align"),
+    ("RightArm", "右腕", "align"),
+    ("RightForeArm", "右ひじ", "align"),
+    ("RightHand", "右手首", "align"),
+    ("LeftUpLeg", "左足", "align"),
+    ("LeftLeg", "左ひざ", "align"),
+    ("LeftFoot", "左足首", "align"),
+    ("RightUpLeg", "右足", "align"),
+    ("RightLeg", "右ひざ", "align"),
+    ("RightFoot", "右足首", "align"),
 ]
+
+# bones receiving --tilt-offset-deg / --head-tilt-offset-deg
+TRUNK_BONES = ("上半身", "上半身2", "首", "頭")
+HEAD_BONES = ("首", "頭")
 
 # source foot, IK bone, FK ankle used for direction alignment
 IK_MAP = [
@@ -95,6 +108,19 @@ def parse_args() -> argparse.Namespace:
         "--in-place",
         action="store_true",
         help="Strip horizontal (XZ) root motion so the motion loops in place.",
+    )
+    parser.add_argument(
+        "--tilt-offset-deg",
+        type=float,
+        default=0.0,
+        help="Extra forward pitch (deg) applied to the trunk (上半身/上半身2/首/頭). "
+        "Use to counteract a source motion's own backward lean.",
+    )
+    parser.add_argument(
+        "--head-tilt-offset-deg",
+        type=float,
+        default=0.0,
+        help="Additional forward pitch (deg) applied to 首/頭 on top of --tilt-offset-deg.",
     )
     return parser.parse_args(argv)
 
@@ -158,10 +184,14 @@ class Retargeter:
         target: bpy.types.Object,
         scale: float | None,
         in_place: bool,
+        tilt_offset_deg: float = 0.0,
+        head_tilt_offset_deg: float = 0.0,
     ) -> None:
         self.source = source
         self.target = target
         self.in_place = in_place
+        self.tilt_offset_deg = tilt_offset_deg
+        self.head_tilt_offset_deg = head_tilt_offset_deg
         prefix = detect_prefix(source)
         self.src_name = lambda n: prefix + n
 
@@ -199,9 +229,11 @@ class Retargeter:
             return n in self.tgt_rest_arm
 
         self.fk_pairs: list[tuple[str, str]] = []
-        for src, dst in FK_MAP:
+        fk_mode: dict[str, str] = {}
+        for src, dst, mode in FK_MAP:
             if has_src(src) and has_tgt(dst):
                 self.fk_pairs.append((self.src_name(src), dst))
+                fk_mode[dst] = mode
             else:
                 print(f"[fbx2vmd] skip mapping {src} -> {dst} (missing bone)")
 
@@ -232,10 +264,22 @@ class Retargeter:
             return d_dst.rotation_difference(d_src)
 
         for src, dst in self.fk_pairs:
-            self.align[dst] = alignment(src, dst)
+            self.align[dst] = alignment(src, dst) if fk_mode[dst] == "align" else Quaternion()
         for src, ik, ankle in self.ik_triples:
             # foot IK rotation is driven by the ankle's direction alignment
             self.align[ik] = alignment(src, ankle)
+
+        # --- optional forward-pitch correction (world space) ----------------
+        # +X is the character's pitch axis (faces -Y, up +Z); a positive angle
+        # tips the bone forward. Pre-multiplied in world space, so each trunk
+        # bone's absolute orientation is pitched by the same amount.
+        self.pitch_offset: dict[str, Quaternion] = {}
+        for name in TRUNK_BONES:
+            deg = self.tilt_offset_deg + (
+                self.head_tilt_offset_deg if name in HEAD_BONES else 0.0
+            )
+            if abs(deg) > 1e-6:
+                self.pitch_offset[name] = Quaternion((1.0, 0.0, 0.0), math.radians(deg))
 
         # --- motion scale ----------------------------------------------------
         if scale is not None:
@@ -281,9 +325,9 @@ class Retargeter:
         desired_loc: dict[str, Vector] = {}
 
         for src, dst in self.fk_pairs:
-            desired_rot[dst] = (
-                self.world_delta(src) @ self.align[dst] @ quat_of(self.tgt_rest_world[dst])
-            )
+            rot = self.world_delta(src) @ self.align[dst] @ quat_of(self.tgt_rest_world[dst])
+            offset = self.pitch_offset.get(dst)
+            desired_rot[dst] = offset @ rot if offset is not None else rot
 
         # center: hips translation delta, no rotation
         hips_delta = (
@@ -417,7 +461,14 @@ def main() -> None:
     source = import_fbx(fbx_path)
     print(f"[fbx2vmd] target={target.name} source={source.name}")
 
-    retargeter = Retargeter(source, target, args.scale, args.in_place)
+    retargeter = Retargeter(
+        source,
+        target,
+        args.scale,
+        args.in_place,
+        tilt_offset_deg=args.tilt_offset_deg,
+        head_tilt_offset_deg=args.head_tilt_offset_deg,
+    )
     n_frames = bake(retargeter, target)
     export_vmd(target, out_path, 1.0 / args.pmx_scale, n_frames)
     print(f"[fbx2vmd] wrote {out_path}")

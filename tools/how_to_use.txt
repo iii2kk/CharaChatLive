@@ -6,6 +6,9 @@
   --out "public\motions\vmd\base\Fast Run_v2.vmd"
 # オプション: --in-place (水平方向のルート移動を除去してその場ループ化)
 #            --scale N (モーションスケール手動指定。省略時は脚の長さ比から自動算出)
+#            --tilt-offset-deg N (体幹[上半身/上半身2/首/頭]を N 度前傾補正。
+#                元モーション自体の後ろ反りを打ち消したいときに使う)
+#            --head-tilt-offset-deg N (首/頭にさらに N 度追加の前傾補正)
 
 # fbx2vmd_check.py : 変換結果の検証 (VMDをPMXに読み戻してレンダリング + 数値チェック)
 & "C:\Program Files\Blender Foundation\Blender 5.1\blender.exe" --background `
